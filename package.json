@@ -1,0 +1,93 @@
+{
+    "name": "lumina-search",
+    "version": "1.0.0",
+    "description": "AI-powered local desktop search with parallel agent orchestration - Lumina style with RAG support",
+    "author": "Lumina Search Team",
+    "license": "MIT",
+    "main": "./out/main/index.js",
+    "scripts": {
+        "dev": "electron-vite dev",
+        "build": "electron-vite build",
+        "preview": "electron-vite preview",
+        "electron:build": "npm run build && electron-builder",
+        "test": "vitest run",
+        "test:watch": "vitest"
+    },
+    "build": {
+        "appId": "com.luminasearch.app",
+        "productName": "Lumina Search",
+        "copyright": "Copyright © 2024 Lumina Search",
+        "directories": {
+            "output": "release"
+        },
+        "files": [
+            "out/**/*"
+        ],
+        "win": {
+            "target": [
+                {
+                    "target": "portable",
+                    "arch": [
+                        "x64"
+                    ]
+                }
+            ],
+            "artifactName": "${productName}-${version}-${arch}.${ext}"
+        },
+        "nsis": {
+            "oneClick": false,
+            "perMachine": false,
+            "allowToChangeInstallationDirectory": true,
+            "deleteAppDataOnUninstall": false,
+            "createDesktopShortcut": true,
+            "createStartMenuShortcut": true,
+            "shortcutName": "Lumina Search"
+        },
+        "mac": {
+            "target": [
+                "dmg",
+                "zip"
+            ],
+            "artifactName": "${productName}-${version}-${arch}.${ext}"
+        },
+        "linux": {
+            "target": [
+                "AppImage",
+                "deb"
+            ],
+            "artifactName": "${productName}-${version}-${arch}.${ext}"
+        }
+    },
+    "dependencies": {
+        "@anthropic-ai/sdk": "^0.20.1",
+        "@google/generative-ai": "^0.3.0",
+        "@lancedb/lancedb": "^0.26.2",
+        "@tavily/core": "^0.0.2",
+        "@types/uuid": "^10.0.0",
+        "langfuse": "^3.0.0",
+        "lru-cache": "^11.2.6",
+        "openai": "^4.28.0",
+        "pdf-parse": "1.1.1",
+        "react": "^18.2.0",
+        "react-dom": "^18.2.0",
+        "react-markdown": "^9.0.1",
+        "rehype-highlight": "^7.0.0",
+        "remark-gfm": "^4.0.0",
+        "uuid": "^13.0.0",
+        "vectordb": "^0.21.2",
+        "zustand": "^4.5.0"
+    },
+    "devDependencies": {
+        "@types/node": "^20.11.0",
+        "@types/react": "^18.2.55",
+        "@types/react-dom": "^18.2.19",
+        "@vitejs/plugin-react": "^4.2.1",
+        "electron": "^28.2.0",
+        "electron-builder": "^24.9.1",
+        "electron-packager": "^17.1.2",
+        "electron-vite": "^2.0.0",
+        "typescript": "^5.3.3",
+        "vite": "^5.1.1",
+        "vitest": "^1.6.1"
+    }
+}
