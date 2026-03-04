@@ -54,16 +54,13 @@
             "oneClick": false,
             "perMachine": false,
             "allowToChangeInstallationDirectory": true,
-            "allowToDowngrade": false,
             "deleteAppDataOnUninstall": false,
             "createDesktopShortcut": true,
             "createStartMenuShortcut": true,
-            "createSameFolder": true,
             "shortcutName": "Lumina Search",
             "installerIcon": "./resources/icon.png",
             "uninstallerIcon": "./resources/icon.png",
             "installerHeaderIcon": "./resources/icon.png",
-            "installElevated": false,
             "runAfterFinish": true,
             "displayLanguageSelector": true,
             "installerLanguages": [
@@ -75,18 +72,9 @@
                 "zh_CN"
             ],
             "differentialPackage": true,
-            "artifactName": "${productName}-SetUp-${version}.${ext}"
+            "artifactName": "${productName}-${version}.${ext}"
         },
-        "publish": [
-            {
-                "provider": "github",
-                "owner": "KunjShah95",
-                "repo": "lumina-search",
-                "releaseName": "v${version}",
-                "releaseType": "release",
-                "publish": "always"
-            }
-        ],
+        "publish": null,
         "mac": {
             "target": [
                 "dmg",
