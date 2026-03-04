@@ -16,6 +16,12 @@ export interface BudgetPolicy {
     softLimitTokensPerSession?: number
     hardLimitTokensPerDay?: number
     softLimitTokensPerDay?: number
+    hardLimitTokensPerMonth?: number
+    softLimitTokensPerMonth?: number
+    hardLimitCostPerDay?: number
+    softLimitCostPerDay?: number
+    hardLimitCostPerMonth?: number
+    softLimitCostPerMonth?: number
 }
 
 export interface CostEstimate {
@@ -27,6 +33,36 @@ export interface CostEstimate {
     contextCompressionRatio: number
     shouldBlock: boolean
     reason?: string
+}
+
+export interface OnlineEvalFeedback {
+    id: string
+    createdAt: number
+    threadId: string
+    query?: string
+    answerPreview?: string
+    vote: 'up' | 'down'
+    citedCorrectly?: boolean
+    notes?: string
+    source: 'manual' | 'prompt'
+}
+
+export interface MemoryFact {
+    id: string
+    createdAt: number
+    updatedAt: number
+    threadId: string
+    key?: string
+    value: string
+    tags?: string[]
+    source: 'manual' | 'auto'
+    expiresAt?: number
+}
+
+export interface MemoryPolicy {
+    enabled?: boolean
+    maxFactsPerQuery?: number
+    ttlDays?: number
 }
 
 export interface ImageResult {
@@ -161,6 +197,7 @@ export interface SearchOpts {
     compareModels?: string[]  // For compare mode
     sessionId?: string
     budgetPolicy?: BudgetPolicy
+    memoryPolicy?: MemoryPolicy
 }
 
 export interface AppSettings {
@@ -181,6 +218,9 @@ export interface AppSettings {
     maxTokens: number
     hasCompletedOnboarding?: boolean
     clipboardMonitorEnabled?: boolean
+    memoryEnabled?: boolean
+    memoryTtlDays?: number
+    memoryMaxFactsPerQuery?: number
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -201,4 +241,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     maxTokens: 4096,
     hasCompletedOnboarding: false,
     clipboardMonitorEnabled: false,
+    memoryEnabled: false,
+    memoryTtlDays: 30,
+    memoryMaxFactsPerQuery: 5,
 }

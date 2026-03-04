@@ -197,7 +197,7 @@ export async function addDocumentToKnowledgeBase(
     kb.documents.push(doc)
     kb.updatedAt = Date.now()
 
-    await addDocumentChunks(kbId, doc.id, chunks);
+    await addDocumentChunks(kbId, chunks, doc.id);
 
     saveData()
     return doc

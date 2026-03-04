@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { useSettingsStore } from '../store/settingsStore'
 import { AppSettings, SearchProvider } from '../../../main/agents/types'
 
@@ -8,6 +8,16 @@ export default function SettingsPanel({ onClose }: Props) {
     const { settings, setSettings } = useSettingsStore()
     const [form, setForm] = useState<AppSettings>({ ...settings })
     const [saved, setSaved] = useState(false)
+    const [updaterStatus, setUpdaterStatus] = useState<{
+        available: boolean
+        currentVersion: string
+        latestVersion?: string
+        releaseName?: string
+        releaseNotes?: string
+        stagingPercentage?: number
+    } | null>(null)
+    const [updateBusy, setUpdateBusy] = useState(false)
+    const [updateMessage, setUpdateMessage] = useState('')
 
     const set = (key: keyof AppSettings, value: string | boolean | number) => {
         setForm(f => ({ ...f, [key]: value }))
@@ -25,6 +35,67 @@ export default function SettingsPanel({ onClose }: Props) {
         { value: 'tavily', label: 'Tavily (API Key)' },
         { value: 'brave', label: 'Brave Search (API Key)' },
     ]
+
+    useEffect(() => {
+        ; (async () => {
+            try {
+                const status = await window.api.getUpdaterStatus()
+                setUpdaterStatus(status)
+            } catch {
+                setUpdateMessage('Update status unavailable in current environment.')
+            }
+        })()
+    }, [])
+
+    const refreshUpdaterStatus = async () => {
+        const status = await window.api.getUpdaterStatus()
+        setUpdaterStatus(status)
+        return status
+    }
+
+    const handleCheckUpdates = async () => {
+        setUpdateBusy(true)
+        setUpdateMessage('')
+        try {
+            const available = await window.api.checkForUpdates()
+            const status = await refreshUpdaterStatus()
+            setUpdateMessage(
+                available && status.latestVersion
+                    ? `Update available: ${status.latestVersion}`
+                    : `No updates found. Current version: ${status.currentVersion}`,
+            )
+        } catch {
+            setUpdateMessage('Failed to check for updates.')
+        } finally {
+            setUpdateBusy(false)
+        }
+    }
+
+    const handleDownloadUpdate = async () => {
+        setUpdateBusy(true)
+        setUpdateMessage('')
+        try {
+            const started = await window.api.downloadUpdate()
+            setUpdateMessage(started ? 'Update download started.' : 'No update available to download.')
+        } catch {
+            setUpdateMessage('Failed to start update download.')
+        } finally {
+            setUpdateBusy(false)
+        }
+    }
+
+    const handleInstallUpdate = async () => {
+        setUpdateBusy(true)
+        setUpdateMessage('')
+        try {
+            const accepted = await window.api.installUpdate()
+            setUpdateMessage(accepted ? 'Installing update. App may restart shortly.' : 'No downloaded update to install.')
+        } catch {
+            setUpdateMessage('Failed to install update.')
+        } finally {
+            setUpdateBusy(false)
+        }
+    }
 
     return (
         <div className="settings-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
@@ -151,6 +222,37 @@ export default function SettingsPanel({ onClose }: Props) {
                                 <option value="system">System</option>
                             </select>
                         </div>
+                    </div>
+
+                    {/* Updates */}
+                    <div>
+                        <div className="settings-section-title">Updates</div>
+                        <div className="settings-field">
+                            <label className="settings-label">Current Version</label>
+                            <div className="settings-input" style={{ minHeight: 40, display: 'flex', alignItems: 'center' }}>
+                                {updaterStatus?.currentVersion ?? 'Unknown'}
+                            </div>
+                        </div>
+                        {updaterStatus?.available && updaterStatus.latestVersion && (
+                            <div className="settings-field">
+                                <label className="settings-label">Latest Version</label>
+                                <div className="settings-input" style={{ minHeight: 40, display: 'flex', alignItems: 'center' }}>
+                                    {updaterStatus.latestVersion}
+                                </div>
+                            </div>
+                        )}
+                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                            <button className="btn-ghost" onClick={handleCheckUpdates} disabled={updateBusy}>
+                                Check Updates
+                            </button>
+                            <button className="btn-ghost" onClick={handleDownloadUpdate} disabled={updateBusy || !updaterStatus?.available}>
+                                Download Update
+                            </button>
+                            <button className="btn-primary" onClick={handleInstallUpdate} disabled={updateBusy}>
+                                Install Update
+                            </button>
+                        </div>
+                        {updateMessage && <div style={{ marginTop: 10, opacity: 0.9 }}>{updateMessage}</div>}
                     </div>
                 </div>
 

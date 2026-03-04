@@ -10,6 +10,7 @@ import { scoreAnswer, shouldTriggerRepair } from './confidenceScorer'
 import { budgetPlanner } from './BudgetPlanner'
 import { compareModels } from './AnswerComparator'
 import { buildCitationGraph } from './CitationGraph'
+import { buildMemoryContext, maybeRememberFromQuery } from '../services/memoryProfile'
 
 /**
  * SearchOrchestrator — Master coordinator agent.
@@ -112,7 +113,10 @@ export class SearchOrchestrator {
 
         // ── Phase 4: Sequential context building ─────────────
         yield { type: 'phase', label: '🧠 Synthesizing answer...' }
-        const context = new ContextBuilderAgent().run(merged, focusMode)
+        const memoryContext = this.resolveMemoryContext(query, opts)
+        const context = new ContextBuilderAgent().run(merged, focusMode, {
+            memoryContext,
+        })
         const contextChars = context.length
 
         const initialPlan = budgetPlanner.estimate({
@@ -203,6 +207,7 @@ export class SearchOrchestrator {
             const strictContext = new ContextBuilderAgent().run(repairedMerged, focusMode, {
                 strictCitations: true,
                 repairPass: true,
+                memoryContext,
             })
 
             const repairPlan = budgetPlanner.estimate({
@@ -250,7 +255,35 @@ export class SearchOrchestrator {
             }
         } catch { /* non-critical */ }
 
+        this.captureMemoryCandidate(query, opts)
+
         yield { type: 'done' }
+    }
+
+    private resolveMemoryContext(query: string, opts: SearchOpts): string {
+        if (!opts.memoryPolicy?.enabled || !opts.sessionId) {
+            return ''
+        }
+
+        const { text } = buildMemoryContext({
+            threadId: opts.sessionId,
+            query,
+            maxFacts: opts.memoryPolicy.maxFactsPerQuery,
+        })
+
+        return text
+    }
+
+    private captureMemoryCandidate(query: string, opts: SearchOpts): void {
+        if (!opts.memoryPolicy?.enabled || !opts.sessionId) {
+            return
+        }
+
+        maybeRememberFromQuery({
+            threadId: opts.sessionId,
+            query,
+            ttlDays: opts.memoryPolicy.ttlDays,
+        })
     }
 
     private expandProviders(providers: SearchProvider[]): SearchProvider[] {

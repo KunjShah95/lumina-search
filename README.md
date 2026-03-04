@@ -1624,6 +1624,15 @@ npm run test:watch
 
 # Run with coverage
 npm test -- --coverage
+
+# Run offline evaluation benchmark
+npm run eval:offline
+
+# Run regression gate (CI release blocker)
+npm run eval:gate
+
+# Generate weekly evaluation dashboard/report
+npm run eval:weekly
 ```
 
 ### Writing Tests

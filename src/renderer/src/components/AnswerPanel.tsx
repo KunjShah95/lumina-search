@@ -17,6 +17,9 @@ export default function AnswerPanel() {
     const [isSpeaking, setIsSpeaking] = useState(false)
     const speechRef = useRef<SpeechSynthesisUtterance | null>(null)
     const [showNotes, setShowNotes] = useState(false)
+    const [feedbackVote, setFeedbackVote] = useState<'up' | 'down' | null>(null)
+    const [citationFeedback, setCitationFeedback] = useState<boolean | null>(null)
+    const [feedbackSaved, setFeedbackSaved] = useState(false)
 
     const copyAnswer = useCallback(() => {
         navigator.clipboard.writeText(answer)
@@ -102,6 +105,23 @@ export default function AnswerPanel() {
         setActiveCitation(index)
         useSearchStore.getState().setActiveSource(index)
     }
+
+    const submitFeedback = useCallback(async (vote: 'up' | 'down', citedCorrectly?: boolean) => {
+        if (!threadId || !answer) return
+        try {
+            await window.api.recordEvalFeedback({
+                threadId,
+                query: threads.find(t => t.id === threadId)?.messages.find(m => m.role === 'user')?.content,
+                answerPreview: answer.slice(0, 500),
+                vote,
+                citedCorrectly,
+                source: 'manual',
+            })
+            setFeedbackSaved(true)
+        } catch (err) {
+            console.error('Failed to save evaluation feedback', err)
+        }
+    }, [threadId, answer, threads])
 
     return (
         <div className="answer-section">
@@ -273,6 +293,56 @@ export default function AnswerPanel() {
                             </button>
                         ))}
                     </div>
+                </div>
+            )}
+
+            {/* Online evaluation prompt */}
+            {phase === 'done' && answer && threadId && (
+                <div className="followups-section" style={{ marginTop: 14 }}>
+                    <div className="followups-label">✅ Was this answer helpful and cited correctly?</div>
+                    <div className="followup-chips" style={{ gap: 8 }}>
+                        <button
+                            className={`followup-chip ${feedbackVote === 'up' ? 'active' : ''}`}
+                            onClick={() => {
+                                setFeedbackVote('up')
+                                submitFeedback('up', citationFeedback === null ? undefined : citationFeedback)
+                            }}
+                        >
+                            👍 Helpful
+                        </button>
+                        <button
+                            className={`followup-chip ${feedbackVote === 'down' ? 'active' : ''}`}
+                            onClick={() => {
+                                setFeedbackVote('down')
+                                submitFeedback('down', citationFeedback === null ? undefined : citationFeedback)
+                            }}
+                        >
+                            👎 Not helpful
+                        </button>
+                        <button
+                            className={`followup-chip ${citationFeedback === true ? 'active' : ''}`}
+                            onClick={() => {
+                                setCitationFeedback(true)
+                                if (feedbackVote) void submitFeedback(feedbackVote, true)
+                            }}
+                        >
+                            📌 Citations correct
+                        </button>
+                        <button
+                            className={`followup-chip ${citationFeedback === false ? 'active' : ''}`}
+                            onClick={() => {
+                                setCitationFeedback(false)
+                                if (feedbackVote) void submitFeedback(feedbackVote, false)
+                            }}
+                        >
+                            ⚠️ Citation issue
+                        </button>
+                    </div>
+                    {feedbackSaved && (
+                        <div style={{ marginTop: 6, color: 'var(--text-3)', fontSize: 12 }}>
+                            Thanks — feedback recorded for weekly quality tracking.
+                        </div>
+                    )}
                 </div>
             )}
             {showNotes && <NoteEditor onClose={() => setShowNotes(false)} />}

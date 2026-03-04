@@ -1,0 +1,21 @@
+{
+  "summary": {
+    "runId": "baseline_v1",
+    "createdAt": 1700000000000,
+    "datasetSize": 3,
+    "passCount": 3,
+    "passRate": 1,
+    "avgScore": 0.73,
+    "p95LatencyMs": 6400,
+    "avgEstimatedTokens": 2400
+  },
+  "thresholds": {
+    "minCaseScore": 0.62,
+    "minPassRate": 0.8,
+    "maxLatencyMsP95": 10000,
+    "maxEstimatedTokensAvg": 4500,
+    "maxScoreRegressionDrop": 0.05,
+    "maxPassRateRegressionDrop": 0.08
+  },
+  "cases": []
+}

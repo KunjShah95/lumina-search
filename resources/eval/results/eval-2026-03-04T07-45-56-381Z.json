@@ -1,0 +1,52 @@
+{
+  "summary": {
+    "runId": "eval_1772610356381",
+    "createdAt": 1772610356381,
+    "datasetSize": 3,
+    "passCount": 3,
+    "passRate": 1,
+    "avgScore": 0.7051,
+    "p95LatencyMs": 5600,
+    "avgEstimatedTokens": 2183
+  },
+  "thresholds": {
+    "minCaseScore": 0.62,
+    "minPassRate": 0.8,
+    "maxLatencyMsP95": 10000,
+    "maxEstimatedTokensAvg": 4500,
+    "maxScoreRegressionDrop": 0.05,
+    "maxPassRateRegressionDrop": 0.08
+  },
+  "cases": [
+    {
+      "id": "gq_001",
+      "score": 0.8187,
+      "passed": true,
+      "citationCorrectness": 1,
+      "relevance": 0.5971,
+      "latencyPass": true,
+      "tokenPass": true,
+      "reasons": []
+    },
+    {
+      "id": "gq_002",
+      "score": 0.6636,
+      "passed": true,
+      "citationCorrectness": 1,
+      "relevance": 0.2525,
+      "latencyPass": true,
+      "tokenPass": true,
+      "reasons": []
+    },
+    {
+      "id": "gq_003",
+      "score": 0.6331,
+      "passed": true,
+      "citationCorrectness": 1,
+      "relevance": 0.1846,
+      "latencyPass": true,
+      "tokenPass": true,
+      "reasons": []
+    }
+  ]
+}

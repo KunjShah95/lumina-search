@@ -11,7 +11,15 @@
         "preview": "electron-vite preview",
         "electron:build": "npm run build && electron-builder",
         "test": "vitest run",
-        "test:watch": "vitest"
+        "test:watch": "vitest",
+        "eval:offline": "node scripts/run-offline-eval.js",
+        "eval:gate": "node scripts/run-offline-eval.js --gate",
+        "eval:weekly": "node scripts/run-offline-eval.js",
+        "build:win": "npm run build && electron-builder --win nsis portable",
+        "build:win-installer": "npm run build && electron-builder --win nsis",
+        "build:win-portable": "npm run build && electron-builder --win portable",
+        "create-shortcuts": "node src/main/services/windowsShortcuts.js",
+        "remove-shortcuts": "node src/main/services/windowsShortcuts.js remove"
     },
     "build": {
         "appId": "com.luminasearch.app",
@@ -26,23 +34,59 @@
         "win": {
             "target": [
                 {
+                    "target": "nsis",
+                    "arch": [
+                        "x64"
+                    ]
+                },
+                {
                     "target": "portable",
                     "arch": [
                         "x64"
                     ]
                 }
             ],
-            "artifactName": "${productName}-${version}-${arch}.${ext}"
+            "artifactName": "${productName}-${version}-${arch}.${ext}",
+            "certificateFile": null,
+            "certificatePassword": null
         },
         "nsis": {
             "oneClick": false,
             "perMachine": false,
             "allowToChangeInstallationDirectory": true,
+            "allowToDowngrade": false,
             "deleteAppDataOnUninstall": false,
             "createDesktopShortcut": true,
             "createStartMenuShortcut": true,
-            "shortcutName": "Lumina Search"
+            "createSameFolder": true,
+            "shortcutName": "Lumina Search",
+            "installerIcon": "./resources/icon.png",
+            "uninstallerIcon": "./resources/icon.png",
+            "installerHeaderIcon": "./resources/icon.png",
+            "installElevated": false,
+            "runAfterFinish": true,
+            "displayLanguageSelector": true,
+            "installerLanguages": [
+                "en_US",
+                "es_ES",
+                "fr_FR",
+                "de_DE",
+                "ja_JP",
+                "zh_CN"
+            ],
+            "differentialPackage": true,
+            "artifactName": "${productName}-SetUp-${version}.${ext}"
         },
+        "publish": [
+            {
+                "provider": "github",
+                "owner": "KunjShah95",
+                "repo": "lumina-search",
+                "releaseName": "v${version}",
+                "releaseType": "release",
+                "publish": "always"
+            }
+        ],
         "mac": {
             "target": [
                 "dmg",
@@ -59,6 +103,7 @@
         }
     },
     "dependencies": {
+        "electron-updater": "^6.1.7",
         "@anthropic-ai/sdk": "^0.20.1",
         "@google/generative-ai": "^0.3.0",
         "@lancedb/lancedb": "^0.26.2",
@@ -91,3 +136,4 @@
         "vitest": "^1.6.1"
     }
 }
+

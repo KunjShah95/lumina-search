@@ -154,9 +154,11 @@ export function object<T>(shape: { [K in keyof T]: (val: unknown) => T[K] }): Sc
             }
             
             const result: any = {};
-            for (const [key, validator] of Object.entries(shape)) {
+            const source = data as Record<string, unknown>;
+            for (const key of Object.keys(shape) as Array<keyof T>) {
+                const validator = shape[key];
                 try {
-                    result[key] = validator((data as any)[key]);
+                    result[key] = validator(source[String(key)]);
                 } catch (err) {
                     if (err instanceof ValidationError) {
                         throw err;
@@ -184,7 +186,7 @@ export function withValidation<TArgs, TReturn>(
             return await Promise.resolve(handler(validated));
         } catch (err) {
             if (err instanceof ValidationError) {
-                logger.warn('IPC validation failed', err, { field: err.field });
+                logger.warn('IPC validation failed', { field: err.field, message: err.message });
                 throw new Error(`Invalid input: ${err.message}`);
             }
             throw err;

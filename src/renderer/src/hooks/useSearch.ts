@@ -168,6 +168,11 @@ export function useSearch() {
                 scrapePages: settings.scrapePages,
                 focusMode,
                 sessionId: id,
+                memoryPolicy: {
+                    enabled: settings.memoryEnabled,
+                    ttlDays: settings.memoryTtlDays,
+                    maxFactsPerQuery: settings.memoryMaxFactsPerQuery,
+                },
                 conversationHistory: conversationHistory.current.slice(-6),
             },
             (event: AgentEvent) => {

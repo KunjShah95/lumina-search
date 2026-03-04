@@ -1,4 +1,7 @@
 import { BudgetPolicy, CostEstimate } from './types'
+import { createLogger } from '../services/logger'
+
+const logger = createLogger('budget-planner')
 
 interface PlanInput {
     query: string
@@ -13,11 +16,25 @@ interface PlanInput {
 interface BudgetUsageState {
     sessionTokens: Map<string, number>
     dayTokens: Map<string, number>
+    monthTokens: Map<string, number>
+    monthCosts: Map<string, number>
+}
+
+interface BudgetStats {
+    period: string
+    totalTokens: number
+    totalCostUsd: number
+    queryCount: number
+    averageTokensPerQuery: number
+    averageCostPerQuery: number
+    trendLastWeek?: { tokens: number[]; costs: number[] }
 }
 
 const usageState: BudgetUsageState = {
     sessionTokens: new Map(),
     dayTokens: new Map(),
+    monthTokens: new Map(),
+    monthCosts: new Map(),
 }
 
 const MODEL_INPUT_COST_PER_1K: Record<string, number> = {
@@ -44,6 +61,12 @@ const DEFAULT_POLICY: Required<BudgetPolicy> = {
     hardLimitTokensPerSession: 45000,
     softLimitTokensPerDay: 120000,
     hardLimitTokensPerDay: 220000,
+    softLimitTokensPerMonth: 2500000,
+    hardLimitTokensPerMonth: 4000000,
+    softLimitCostPerDay: 10,
+    hardLimitCostPerDay: 50,
+    softLimitCostPerMonth: 300,
+    hardLimitCostPerMonth: 900,
 }
 
 export class BudgetPlanner {
@@ -67,14 +90,19 @@ export class BudgetPlanner {
 
         const sessionKey = input.sessionId || 'default'
         const dayKey = this.currentDayKey()
+        const monthKey = this.currentMonthKey()
         const sessionUsed = usageState.sessionTokens.get(sessionKey) ?? 0
         const dayUsed = usageState.dayTokens.get(dayKey) ?? 0
+        const monthUsed = usageState.monthTokens.get(monthKey) ?? 0
+        const monthCostUsed = usageState.monthCosts.get(monthKey) ?? 0
 
         const hardQueryExceeded = estimatedTotalTokens > policy.hardLimitTokensPerQuery
         const hardSessionExceeded = sessionUsed + estimatedTotalTokens > policy.hardLimitTokensPerSession
         const hardDayExceeded = dayUsed + estimatedTotalTokens > policy.hardLimitTokensPerDay
+        const hardMonthExceeded = monthUsed + estimatedTotalTokens > policy.hardLimitTokensPerMonth
+        const hardCostExceeded = monthCostUsed + projectedCostUsd > policy.hardLimitCostPerMonth
 
-        if (policy.enabled && (hardQueryExceeded || hardSessionExceeded || hardDayExceeded)) {
+        if (policy.enabled && (hardQueryExceeded || hardSessionExceeded || hardDayExceeded || hardMonthExceeded || hardCostExceeded)) {
             return {
                 estimatedInputTokens,
                 estimatedOutputTokens,
@@ -87,7 +115,11 @@ export class BudgetPlanner {
                     ? 'Hard query budget exceeded'
                     : hardSessionExceeded
                         ? 'Hard session budget exceeded'
-                        : 'Hard daily budget exceeded',
+                        : hardDayExceeded
+                            ? 'Hard daily budget exceeded'
+                            : hardMonthExceeded
+                                ? 'Hard monthly token budget exceeded'
+                                : 'Hard monthly cost budget exceeded',
             }
         }
 
@@ -97,6 +129,9 @@ export class BudgetPlanner {
             policy,
             sessionUsed,
             dayUsed,
+            monthUsed,
+            monthCostUsed,
+            projectedCostUsd,
         )
 
         return {
@@ -110,15 +145,30 @@ export class BudgetPlanner {
         }
     }
 
-    registerUsage(sessionId: string, consumedTokens: number): void {
+    registerUsage(sessionId: string, consumedTokens: number, costUsd?: number): void {
         if (!Number.isFinite(consumedTokens) || consumedTokens <= 0) return
 
         const dayKey = this.currentDayKey()
+        const monthKey = this.currentMonthKey()
         const currentSession = usageState.sessionTokens.get(sessionId) ?? 0
         const currentDay = usageState.dayTokens.get(dayKey) ?? 0
+        const currentMonth = usageState.monthTokens.get(monthKey) ?? 0
+        const currentMonthCost = usageState.monthCosts.get(monthKey) ?? 0
 
         usageState.sessionTokens.set(sessionId, currentSession + consumedTokens)
         usageState.dayTokens.set(dayKey, currentDay + consumedTokens)
+        usageState.monthTokens.set(monthKey, currentMonth + consumedTokens)
+
+        if (costUsd && Number.isFinite(costUsd) && costUsd > 0) {
+            usageState.monthCosts.set(monthKey, currentMonthCost + costUsd)
+            logger.info('Budget usage registered', {
+                sessionId,
+                tokens: consumedTokens,
+                costUsd: Number(costUsd.toFixed(4)),
+                monthTotalTokens: currentMonth + consumedTokens,
+                monthTotalCost: Number((currentMonthCost + costUsd).toFixed(2)),
+            })
+        }
     }
 
     selectModelForTier(baseModelId: string, tier: 'tier1' | 'tier2' | 'tier3'): string {
@@ -169,20 +219,32 @@ export class BudgetPlanner {
         policy: Required<BudgetPolicy>,
         sessionUsed: number,
         dayUsed: number,
+        monthUsed: number,
+        monthCostUsed: number,
+        projectedCostUsd: number,
     ): 'tier1' | 'tier2' | 'tier3' {
         const sessionHeadroom = policy.hardLimitTokensPerSession - sessionUsed
         const dayHeadroom = policy.hardLimitTokensPerDay - dayUsed
+        const monthHeadroom = policy.hardLimitTokensPerMonth - monthUsed
+        const monthCostHeadroom = policy.hardLimitCostPerMonth - monthCostUsed
 
-        // Budget pressure forces cheaper tiers first.
+        // Budget pressure forces cheaper tiers first (monthly constraints are strongest)
         if (
             estimatedTotalTokens > policy.softLimitTokensPerQuery ||
             sessionHeadroom < policy.softLimitTokensPerSession * 0.25 ||
-            dayHeadroom < policy.softLimitTokensPerDay * 0.2
+            dayHeadroom < policy.softLimitTokensPerDay * 0.2 ||
+            monthHeadroom < policy.softLimitTokensPerMonth * 0.15 ||
+            monthCostHeadroom < policy.softLimitCostPerMonth * 0.2
         ) {
             return 'tier1'
         }
 
-        // Confidence-driven routing.
+        // Cost-aware routing
+        if (monthCostHeadroom < policy.softLimitCostPerMonth * 0.5) {
+            return 'tier1'
+        }
+
+        // Confidence-driven routing
         if (confidenceGap > 0.35) return 'tier3'
         if (confidenceGap > 0.15) return 'tier2'
         return 'tier1'
@@ -212,6 +274,77 @@ export class BudgetPlanner {
 
     private currentDayKey(): string {
         return new Date().toISOString().slice(0, 10)
+    }
+
+    private currentMonthKey(): string {
+        return new Date().toISOString().slice(0, 7)
+    }
+
+    /**
+     * Get current budget statistics for the month
+     */
+    getBudgetStats(): BudgetStats {
+        const monthKey = this.currentMonthKey()
+        const monthTokens = usageState.monthTokens.get(monthKey) ?? 0
+        const monthCosts = usageState.monthCosts.get(monthKey) ?? 0
+        const sessions = Array.from(usageState.sessionTokens.entries()).filter(
+            ([, v]) => Number.isFinite(v) && v > 0,
+        ).length
+
+        return {
+            period: `${monthKey}-01 to ${monthKey}-31`,
+            totalTokens: monthTokens,
+            totalCostUsd: Number(monthCosts.toFixed(2)),
+            queryCount: sessions,
+            averageTokensPerQuery: sessions > 0 ? Math.round(monthTokens / sessions) : 0,
+            averageCostPerQuery:
+                sessions > 0 ? Number((monthCosts / sessions).toFixed(4)) : 0,
+        }
+    }
+
+    /**
+     * Get remaining budget headroom
+     */
+    getRemainingBudget(policy?: BudgetPolicy): {
+        tokensRemaining: number
+        costRemaining: number
+        percentTokens: number
+        percentCost: number
+    } {
+        const resolvedPolicy = this.resolvePolicy(policy)
+        const monthKey = this.currentMonthKey()
+        const monthTokens = usageState.monthTokens.get(monthKey) ?? 0
+        const monthCosts = usageState.monthCosts.get(monthKey) ?? 0
+
+        const tokensRemaining = Math.max(0, resolvedPolicy.hardLimitTokensPerMonth - monthTokens)
+        const costRemaining = Math.max(0, resolvedPolicy.hardLimitCostPerMonth - monthCosts)
+        const percentTokens = Math.round(
+            (tokensRemaining / resolvedPolicy.hardLimitTokensPerMonth) * 100,
+        )
+        const percentCost = Math.round((costRemaining / resolvedPolicy.hardLimitCostPerMonth) * 100)
+
+        return { tokensRemaining, costRemaining, percentTokens, percentCost }
+    }
+
+    /**
+     * Clear month statistics (useful for testing or month rollover)
+     */
+    clearMonthlyStats(monthKey?: string): void {
+        const key = monthKey || this.currentMonthKey()
+        usageState.monthTokens.delete(key)
+        usageState.monthCosts.delete(key)
+        logger.info('Cleared monthly budget stats', { monthKey: key })
+    }
+
+    /**
+     * Clear all statistics
+     */
+    clearAllStats(): void {
+        usageState.sessionTokens.clear()
+        usageState.dayTokens.clear()
+        usageState.monthTokens.clear()
+        usageState.monthCosts.clear()
+        logger.info('Cleared all budget stats')
     }
 }
 

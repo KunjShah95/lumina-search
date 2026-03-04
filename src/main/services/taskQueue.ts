@@ -12,6 +12,7 @@
  */
 
 import { createLogger } from './logger'
+import { getTimeoutManager, TimeoutError } from './timeoutManager'
 
 const logger = createLogger('task-queue')
 
@@ -30,6 +31,9 @@ export interface Task<TResult> {
     retries?: number
     maxRetries?: number
     onProgress?: (progress: number) => void
+    timeoutMs?: number
+    type?: 'ragQuery' | 'embeddingBatch' | 'pluginOperation' | 'fileIngestion' | 'knowledgeBaseSearch' | 'modelInference'
+    fallbackExecute?: () => Promise<TResult | undefined>
 }
 
 export interface QueueMetrics {
@@ -132,12 +136,49 @@ export class TaskQueue {
     }
 
     /**
-     * Execute a single task with retry logic
+     * Execute a single task with retry logic and timeout
      */
     private async executeTask<TResult>(task: InternalTask<TResult>): Promise<void> {
         try {
             task.attempt++
-            const result = await task.execute()
+            const timeoutManager = getTimeoutManager()
+            
+            // Determine timeout: explicit timeoutMs > operation type > no timeout
+            let timeoutMs: number | undefined
+            if (task.timeoutMs) {
+                timeoutMs = task.timeoutMs
+            } else if (task.type) {
+                timeoutMs = timeoutManager.getTimeoutFor(task.type)
+            }
+
+            let result: TResult
+            if (timeoutMs) {
+                // Execute with timeout and optional fallback
+                const onTimeoutFallback = task.fallbackExecute
+                    ? (elapsed: number) => {
+                        logger.info(`Task timeout fallback triggered: ${task.name}`, {
+                            taskId: task.id,
+                            elapsedMs: elapsed,
+                            hasFallback: true,
+                        })
+                        return task.fallbackExecute!()
+                    }
+                    : undefined
+
+                const { result: timedoutResult, timedOut } = await timeoutManager.executeWithTimeout(
+                    task.type || task.name,
+                    () => task.execute(),
+                    timeoutMs,
+                    onTimeoutFallback,
+                )
+                
+                if (timedOut && !timedoutResult) {
+                    throw new TimeoutError(task.type || task.name, timeoutMs)
+                }
+                result = timedoutResult as TResult
+            } else {
+                result = await task.execute()
+            }
 
             task.result = result
             task.endTime = Date.now()

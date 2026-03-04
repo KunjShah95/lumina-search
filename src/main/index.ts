@@ -10,6 +10,7 @@ import { getKnowledgeBases, createKnowledgeBase, deleteKnowledgeBase, addDocumen
 import { processRAGQuery, streamRAGQuery as processRAGQueryStream, RAGOptions } from './rag/orchestrator'
 import { initSemanticCache, getCacheStats, clearCache } from './rag/semanticCache'
 import { initObservability, getTraceStats, getRecentTraces } from './rag/observability'
+import { initVectorStore, getVectorStoreStats, getVectorStoreMode } from './rag/vectorStore'
 import { documentIngestion } from './rag/ingestion'
 import { exportToHTML } from './services/exportService'
 import { autoTagThread, quickTag } from './services/tagService'
@@ -18,6 +19,13 @@ import { scheduleSearch, cancelScheduledSearch, deleteScheduledSearch, getSchedu
 import { createLogger } from './services/logger'
 import { validateString, validateNumber, validateFilePath, validateStringArray, validateOptional } from './services/validation'
 import { getTaskQueue, TaskPriority } from './services/taskQueue'
+import { getSplashScreen } from './services/splashScreen'
+import { getBootstrap } from './services/bootstrap'
+import { getTimeoutManager } from './services/timeoutManager'
+import { getAutoUpdater, registerAutoUpdateHandlers } from './services/autoUpdater'
+import { DEFAULT_EVAL_THRESHOLDS, enforceRegressionGate, EvalRunResult, generateWeeklyEvalDashboard, GoldenEvalCase, runOfflineEvaluation, writeEvalRunArtifacts } from './services/evalHarness'
+import { getOnlineEvalFeedback, getOnlineEvalFeedbackStats, recordOnlineEvalFeedback } from './services/evalFeedback'
+import { addMemoryFact, buildMemoryContext, clearThreadMemories, deleteMemoryFact, initMemoryProfileStore, listMemoryFacts, pruneExpiredMemories } from './services/memoryProfile'
 
 const logger = createLogger('ipc')
 const isDev = !app.isPackaged
@@ -440,6 +448,311 @@ ipcMain.handle('cost:estimate', (_e, query: string, selectedMode?: string, budge
     }
 })
 
+ipcMain.handle('budget:stats', () => {
+    try {
+        return budgetPlanner.getBudgetStats()
+    } catch (err) {
+        logger.error('budget:stats failed', err)
+        throw err
+    }
+})
+
+ipcMain.handle('budget:remaining', (_e, policy?: BudgetPolicy) => {
+    try {
+        return budgetPlanner.getRemainingBudget(policy)
+    } catch (err) {
+        logger.error('budget:remaining failed', err)
+        throw err
+    }
+})
+
+ipcMain.handle('budget:register-usage', (_e, sessionId: string, tokenCount: number, costUsd?: number) => {
+    try {
+        const validSessionId = validateString(sessionId, 'sessionId', { minLength: 1, maxLength: 256 })
+        const validTokens = validateNumber(tokenCount, 'tokenCount', { min: 0 })
+        budgetPlanner.registerUsage(validSessionId, validTokens, costUsd)
+        return true
+    } catch (err) {
+        logger.error('budget:register-usage failed', err)
+        throw err
+    }
+})
+
+ipcMain.handle('budget:clear-monthly', (_e, monthKey?: string) => {
+    try {
+        budgetPlanner.clearMonthlyStats(monthKey)
+        return true
+    } catch (err) {
+        logger.error('budget:clear-monthly failed', err)
+        throw err
+    }
+})
+
+// ── IPC: Timeout Configuration ────────────────────────────────
+ipcMain.handle('timeout:config', () => {
+    try {
+        const timeoutManager = getTimeoutManager()
+        return timeoutManager.getConfig()
+    } catch (err) {
+        logger.error('timeout:config failed', err)
+        throw err
+    }
+})
+
+ipcMain.handle('timeout:update', (_e, operation: string, timeoutMs: number) => {
+    try {
+        const validOp = validateString(operation, 'operation', { minLength: 1, maxLength: 100 })
+        const validMs = validateNumber(timeoutMs, 'timeoutMs', { min: 100, max: 600000 })
+        
+        const timeoutManager = getTimeoutManager()
+        timeoutManager.updateTimeout(validOp as any, validMs)
+        return timeoutManager.getConfig()
+    } catch (err) {
+        logger.error('timeout:update failed', err)
+        throw err
+    }
+})
+
+ipcMain.handle('timeout:stats', () => {
+    try {
+        const timeoutManager = getTimeoutManager()
+        return timeoutManager.getStats()
+    } catch (err) {
+        logger.error('timeout:stats failed', err)
+        throw err
+    }
+})
+
+ipcMain.handle('timeout:suggestions', () => {
+    try {
+        const timeoutManager = getTimeoutManager()
+        return timeoutManager.suggestAdjustments()
+    } catch (err) {
+        logger.error('timeout:suggestions failed', err)
+        throw err
+    }
+})
+
+ipcMain.handle('timeout:clear-stats', () => {
+    try {
+        const timeoutManager = getTimeoutManager()
+        timeoutManager.clearStats()
+        return true
+    } catch (err) {
+        logger.error('timeout:clear-stats failed', err)
+        throw err
+    }
+})
+
+// ── IPC: Auto-updater ─────────────────────────────────────
+// Register all auto-updater IPC handlers
+registerAutoUpdateHandlers()
+
+// ── IPC: Evaluation harness ────────────────────────────────
+ipcMain.handle('eval:offline:run', (_e, datasetPath?: string, baselinePath?: string, gate?: boolean) => {
+    try {
+        const root = process.cwd()
+        const effectiveDataset = validateOptional(datasetPath, (v) => validateFilePath(v, 'datasetPath'))
+            ?? join(root, 'resources', 'eval', 'golden-queries.json')
+        const effectiveBaseline = validateOptional(baselinePath, (v) => validateFilePath(v, 'baselinePath'))
+            ?? join(root, 'resources', 'eval', 'baseline.json')
+
+        if (!fs.existsSync(effectiveDataset)) {
+            throw new Error(`Dataset not found: ${effectiveDataset}`)
+        }
+
+        const dataset = JSON.parse(fs.readFileSync(effectiveDataset, 'utf-8')) as GoldenEvalCase[]
+        const runResult = runOfflineEvaluation(dataset, DEFAULT_EVAL_THRESHOLDS)
+
+        const outputDir = join(root, 'resources', 'eval', 'results')
+        const artifacts = writeEvalRunArtifacts(runResult, outputDir)
+
+        const shouldGate = gate === true
+        if (shouldGate && fs.existsSync(effectiveBaseline)) {
+            const baseline = JSON.parse(fs.readFileSync(effectiveBaseline, 'utf-8')) as EvalRunResult
+            const regression = enforceRegressionGate(runResult, baseline)
+            return {
+                ...artifacts,
+                runResult,
+                regression,
+            }
+        }
+
+        return {
+            ...artifacts,
+            runResult,
+            regression: { pass: true, reasons: [] },
+        }
+    } catch (err) {
+        logger.error('eval:offline:run failed', err)
+        throw err
+    }
+})
+
+ipcMain.handle('eval:weekly:report', (_e, resultsDir?: string, reportsDir?: string) => {
+    try {
+        const root = process.cwd()
+        const effectiveResults = validateOptional(resultsDir, (v) => validateFilePath(v, 'resultsDir'))
+            ?? join(root, 'resources', 'eval', 'results')
+        const effectiveReports = validateOptional(reportsDir, (v) => validateFilePath(v, 'reportsDir'))
+            ?? join(root, 'resources', 'eval', 'reports')
+
+        const reportPath = generateWeeklyEvalDashboard(effectiveResults, effectiveReports)
+        return { reportPath }
+    } catch (err) {
+        logger.error('eval:weekly:report failed', err)
+        throw err
+    }
+})
+
+ipcMain.handle('eval:feedback:record', (_e, payload: {
+    threadId: string
+    query?: string
+    answerPreview?: string
+    vote: 'up' | 'down'
+    citedCorrectly?: boolean
+    notes?: string
+    source?: 'manual' | 'prompt'
+}) => {
+    try {
+        if (!payload || typeof payload !== 'object') {
+            throw new Error('Invalid feedback payload')
+        }
+
+        const threadId = validateString(payload.threadId, 'threadId', { minLength: 1, maxLength: 256 })
+        const vote = validateString(payload.vote, 'vote', { pattern: /^(up|down)$/ }) as 'up' | 'down'
+        const query = validateOptional(payload.query, (v) => validateString(v, 'query', { maxLength: 5000 }))
+        const answerPreview = validateOptional(payload.answerPreview, (v) => validateString(v, 'answerPreview', { maxLength: 5000 }))
+        const notes = validateOptional(payload.notes, (v) => validateString(v, 'notes', { maxLength: 2000 }))
+        const source = validateOptional(payload.source, (v) => validateString(v, 'source', { pattern: /^(manual|prompt)$/ })) as 'manual' | 'prompt' | undefined
+
+        const citedCorrectly = typeof payload.citedCorrectly === 'boolean' ? payload.citedCorrectly : undefined
+
+        return recordOnlineEvalFeedback({
+            threadId,
+            query,
+            answerPreview,
+            vote,
+            citedCorrectly,
+            notes,
+            source: source ?? 'manual',
+        })
+    } catch (err) {
+        logger.error('eval:feedback:record failed', err)
+        throw err
+    }
+})
+
+ipcMain.handle('eval:feedback:list', (_e, limit?: number) => {
+    try {
+        const safeLimit = typeof limit === 'number' ? validateNumber(limit, 'limit', { min: 1, max: 1000, isInteger: true }) : undefined
+        return getOnlineEvalFeedback(safeLimit)
+    } catch (err) {
+        logger.error('eval:feedback:list failed', err)
+        throw err
+    }
+})
+
+ipcMain.handle('eval:feedback:stats', () => {
+    try {
+        return getOnlineEvalFeedbackStats()
+    } catch (err) {
+        logger.error('eval:feedback:stats failed', err)
+        throw err
+    }
+})
+
+// ── IPC: Memory profile (opt-in personalization) ────────────
+ipcMain.handle('memory:add', (_e, payload: {
+    threadId: string
+    key?: string
+    value: string
+    tags?: string[]
+    ttlDays?: number
+    source?: 'manual' | 'auto'
+}) => {
+    try {
+        if (!payload || typeof payload !== 'object') {
+            throw new Error('Invalid memory payload')
+        }
+
+        const threadId = validateString(payload.threadId, 'threadId', { minLength: 1, maxLength: 256 })
+        const value = validateString(payload.value, 'value', { minLength: 1, maxLength: 2000 })
+        const key = validateOptional(payload.key, (v) => validateString(v, 'key', { maxLength: 128 }))
+        const tags = validateOptional(payload.tags, (v) => validateStringArray(v, 'tags', { maxLength: 50 }))
+        const ttlDays = typeof payload.ttlDays === 'number'
+            ? validateNumber(payload.ttlDays, 'ttlDays', { min: 1, max: 3650 })
+            : undefined
+        const source = validateOptional(payload.source, (v) => validateString(v, 'source', { pattern: /^(manual|auto)$/ })) as 'manual' | 'auto' | undefined
+
+        return addMemoryFact({
+            threadId,
+            key,
+            value,
+            tags,
+            ttlDays,
+            source,
+        })
+    } catch (err) {
+        logger.error('memory:add failed', err)
+        throw err
+    }
+})
+
+ipcMain.handle('memory:list', (_e, threadId?: string, includeExpired?: boolean) => {
+    try {
+        const validThreadId = validateOptional(threadId, (v) => validateString(v, 'threadId', { minLength: 1, maxLength: 256 }))
+        const shouldIncludeExpired = includeExpired === true
+        return listMemoryFacts(validThreadId, shouldIncludeExpired)
+    } catch (err) {
+        logger.error('memory:list failed', err)
+        throw err
+    }
+})
+
+ipcMain.handle('memory:delete', (_e, id: string) => {
+    try {
+        const validId = validateString(id, 'id', { minLength: 1, maxLength: 256 })
+        return deleteMemoryFact(validId)
+    } catch (err) {
+        logger.error('memory:delete failed', err)
+        throw err
+    }
+})
+
+ipcMain.handle('memory:clear-thread', (_e, threadId: string) => {
+    try {
+        const validThreadId = validateString(threadId, 'threadId', { minLength: 1, maxLength: 256 })
+        return { deleted: clearThreadMemories(validThreadId) }
+    } catch (err) {
+        logger.error('memory:clear-thread failed', err)
+        throw err
+    }
+})
+
+ipcMain.handle('memory:prune-expired', () => {
+    try {
+        return { deleted: pruneExpiredMemories() }
+    } catch (err) {
+        logger.error('memory:prune-expired failed', err)
+        throw err
+    }
+})
+
+ipcMain.handle('memory:preview-context', (_e, threadId: string, query: string, maxFacts?: number) => {
+    try {
+        const validThreadId = validateString(threadId, 'threadId', { minLength: 1, maxLength: 256 })
+        const validQuery = validateString(query, 'query', { minLength: 1, maxLength: 5000 })
+        const validMaxFacts = typeof maxFacts === 'number'
+            ? validateNumber(maxFacts, 'maxFacts', { min: 1, max: 10, isInteger: true })
+            : undefined
+        return buildMemoryContext({ threadId: validThreadId, query: validQuery, maxFacts: validMaxFacts })
+    } catch (err) {
+        logger.error('memory:preview-context failed', err)
+        throw err
+    }
+})
+
 // ── IPC: Knowledge Base ──────────────────────────────────────
 ipcMain.handle('kb:get-all', () => getKnowledgeBases())
 
@@ -644,9 +957,16 @@ ipcMain.handle('queue:clear-history', () => {
     taskQueue.clearHistory()
     return true
 })
+
+// ── IPC: App status ──────────────────────────────────────────
+ipcMain.handle('app:ready', () => appInitialized)
+ipcMain.handle('app:init-error', () => (initializationError ? { error: initializationError.message } : null))
+
 ipcMain.handle('rag:cache-clear', () => { clearCache(); return true })
 ipcMain.handle('rag:trace-stats', () => getTraceStats())
 ipcMain.handle('rag:recent-traces', (_e, limit?: number) => getRecentTraces(limit))
+ipcMain.handle('rag:vector-store-stats', async () => getVectorStoreStats())
+ipcMain.handle('rag:vector-store-mode', () => getVectorStoreMode())
 
 // ── IPC: Thread utilities (tagging, export) ───────────────────
 ipcMain.handle('thread:auto-tag', async (_e, thread) => {
@@ -748,35 +1068,192 @@ ipcMain.handle('plugins:uninstall', (_e, name: string) => {
     }
 })
 
+// ── IPC: Analytics ──────────────────────────────────────────────
+ipcMain.handle('analytics:get-events', (_e, options: {
+    startDate?: number
+    endDate?: number
+    eventTypes?: string[]
+    format?: 'json' | 'csv'
+}) => {
+    try {
+        const { getAnalyticsCollector } = require('./services/analyticsCollector')
+        const analytics = getAnalyticsCollector()
+        
+        return analytics.getEvents({
+            startDate: options.startDate,
+            endDate: options.endDate,
+            eventTypes: options.eventTypes as any,
+            format: options.format
+        })
+    } catch (err) {
+        logger.error('analytics:get-events failed', { error: err })
+        throw err
+    }
+})
+
+ipcMain.handle('analytics:get-summary', (_e, period: 'hourly' | 'daily' | 'monthly', count?: number) => {
+    try {
+        const validPeriod = validateString(period, 'period', { pattern: /^(hourly|daily|monthly)$/ }) as 'hourly' | 'daily' | 'monthly'
+        const validCount = count !== undefined 
+            ? validateNumber(count, 'count', { min: 1, max: 365, isInteger: true })
+            : undefined
+
+        const { getAnalyticsCollector } = require('./services/analyticsCollector')
+        const analytics = getAnalyticsCollector()
+        
+        return analytics.getSummary(validPeriod, validCount)
+    } catch (err) {
+        logger.error('analytics:get-summary failed', { error: err })
+        throw err
+    }
+})
+
+ipcMain.handle('analytics:export', (_e, options: {
+    startDate?: number
+    endDate?: number
+    eventTypes?: string[]
+    format?: 'json' | 'csv'
+}) => {
+    try {
+        const { getAnalyticsCollector } = require('./services/analyticsCollector')
+        const analytics = getAnalyticsCollector()
+        
+        return analytics.export({
+            startDate: options.startDate,
+            endDate: options.endDate,
+            eventTypes: options.eventTypes as any,
+            format: options.format || 'json'
+        })
+    } catch (err) {
+        logger.error('analytics:export failed', { error: err })
+        throw err
+    }
+})
+
+ipcMain.handle('analytics:clear-all', () => {
+    try {
+        const { getAnalyticsCollector } = require('./services/analyticsCollector')
+        const analytics = getAnalyticsCollector()
+        analytics.clearAll()
+        return { success: true }
+    } catch (err) {
+        logger.error('analytics:clear-all failed', { error: err })
+        throw err
+    }
+})
+
 // ── App lifecycle ──────────────────────────────────────────
+let appInitialized = false
+let initializationError: Error | null = null
+
 app.whenReady().then(async () => {
-    initDatabase()
-    await initKnowledgeBaseTables()
-    initSemanticCache()
-    await initObservability()
-    migrateFromJson()
+    try {
+        // Show splash screen immediately
+        const splashScreen = getSplashScreen()
+        await splashScreen.create()
 
-    // Load plugins and bootstrap scheduler before showing UI
-    loadPlugins()
-    setOnResultCallback((search, results) => {
-        const title = `Scheduled search: "${search.query}"`
-        const body = `${results.length} new result(s) found.`
-        showNotification(title, body)
-    })
-    bootstrapScheduledSearches()
+        // Register initialization tasks
+        const bootstrap = getBootstrap()
+        bootstrap.reset() // Clear any previous tasks
 
-    mainWindow = createWindow()
-    createTray()
-    createAppMenu()
-    registerGlobalShortcut()
+        bootstrap.registerTask('Initializing database...', 25, async () => {
+            initDatabase()
+            await initKnowledgeBaseTables()
+        })
 
-    app.on('activate', () => {
-        if (BrowserWindow.getAllWindows().length === 0) {
-            mainWindow = createWindow()
-        } else {
-            mainWindow?.show()
-        }
-    })
+        bootstrap.registerTask('Loading cache...', 20, async () => {
+            initSemanticCache()
+        })
+
+        bootstrap.registerTask('Initializing vector store...', 15, async () => {
+            await initVectorStore()
+        })
+
+        bootstrap.registerTask('Initializing budget planner...', 5, async () => {
+            // Pre-populate budget stats on boot
+            const stats = budgetPlanner.getBudgetStats()
+            logger.info('Budget planner initialized', {
+                currentMonth: stats.period,
+                tokens: stats.totalTokens,
+                cost: stats.totalCostUsd,
+            })
+        })
+
+        bootstrap.registerTask('Initializing timeout manager...', 3, async () => {
+            const timeoutManager = getTimeoutManager()
+            const config = timeoutManager.getConfig()
+            logger.info('Timeout manager initialized', {
+                ragQuery: config.ragQuery,
+                embeddingBatch: config.embeddingBatch,
+                pluginOperation: config.pluginOperation,
+            })
+        })
+
+        bootstrap.registerTask('Initializing personalization memory...', 2, async () => {
+            initMemoryProfileStore()
+        })
+
+        bootstrap.registerTask('Setting up observability...', 15, async () => {
+            await initObservability()
+        })
+
+        bootstrap.registerTask('Migrating user data...', 10, async () => {
+            migrateFromJson()
+        })
+
+        bootstrap.registerTask('Loading plugins...', 15, async () => {
+            loadPlugins()
+            setOnResultCallback((search, results) => {
+                const title = `Scheduled search: "${search.query}"`
+                const body = `${results.length} new result(s) found.`
+                showNotification(title, body)
+            })
+        })
+
+        bootstrap.registerTask('Bootstrapping scheduler...', 15, async () => {
+            bootstrapScheduledSearches()
+        })
+
+        bootstrap.registerTask('Checking for updates...', 4, async () => {
+            const updater = getAutoUpdater()
+            const available = await updater.checkForUpdates(false)
+            if (available) {
+                const status = updater.getStatus()
+                logger.info('Update available', {
+                    latestVersion: status.latestVersion,
+                    currentVersion: status.currentVersion,
+                })
+            }
+        })
+
+        // Execute all initialization tasks
+        await bootstrap.initialize()
+        appInitialized = true
+        logger.info('Application initialization complete')
+
+        // Now create main window
+        mainWindow = createWindow()
+        createTray()
+        createAppMenu()
+        registerGlobalShortcut()
+
+        app.on('activate', () => {
+            if (BrowserWindow.getAllWindows().length === 0) {
+                mainWindow = createWindow()
+            } else {
+                mainWindow?.show()
+            }
+        })
+    } catch (err) {
+        const error = err instanceof Error ? err : new Error(String(err))
+        initializationError = error
+        logger.error('Application initialization failed', error)
+        // Still create window to show error UI
+        const splashScreen = getSplashScreen()
+        await splashScreen.close()
+        mainWindow = createWindow()
+        mainWindow?.webContents.send('app:init-error', { message: error.message })
+    }
 })
 
 app.on('window-all-closed', () => {

@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import { AgentEvent, AppSettings, SearchOpts, Thread, Collection, BudgetPolicy, CostEstimate } from '../main/agents/types'
+import { AgentEvent, AppSettings, SearchOpts, Thread, Collection, BudgetPolicy, CostEstimate, OnlineEvalFeedback, MemoryFact } from '../main/agents/types'
 
 // Expose safe API to renderer via contextBridge
 contextBridge.exposeInMainWorld('api', {
@@ -21,7 +21,18 @@ contextBridge.exposeInMainWorld('api', {
     // ── Settings ───────────────────────────────────────────
     getSettings: (): Promise<AppSettings> => ipcRenderer.invoke('settings:get'),
     setSettings: (settings: AppSettings): Promise<boolean> => ipcRenderer.invoke('settings:set', settings),
-
+    getUpdaterStatus: (): Promise<{
+        available: boolean
+        currentVersion: string
+        latestVersion?: string
+        releaseName?: string
+        releaseNotes?: string
+        stagingPercentage?: number
+    }> => ipcRenderer.invoke('updater:status'),
+    checkForUpdates: (): Promise<boolean> => ipcRenderer.invoke('updater:check'),
+    downloadUpdate: (): Promise<boolean> => ipcRenderer.invoke('updater:download'),
+    installUpdate: (): Promise<boolean> => ipcRenderer.invoke('updater:install'),
+    skipUpdateVersion: (version: string): Promise<boolean> => ipcRenderer.invoke('updater:skip-version', version),
     // ── History ────────────────────────────────────────────
     getHistory: (): Promise<Thread[]> => ipcRenderer.invoke('history:get'),
     saveThread: (thread: Thread): Promise<boolean> => ipcRenderer.invoke('history:save', thread),
@@ -37,6 +48,41 @@ contextBridge.exposeInMainWorld('api', {
     // ── Cost planner ───────────────────────────────────────
     estimateCost: (query: string, selectedMode?: string, budgetPolicy?: BudgetPolicy): Promise<CostEstimate> =>
         ipcRenderer.invoke('cost:estimate', query, selectedMode, budgetPolicy),
+
+    // ── Evaluation harness ─────────────────────────────────
+    runOfflineEval: (datasetPath?: string, baselinePath?: string, gate?: boolean) =>
+        ipcRenderer.invoke('eval:offline:run', datasetPath, baselinePath, gate),
+    generateWeeklyEvalReport: (resultsDir?: string, reportsDir?: string) =>
+        ipcRenderer.invoke('eval:weekly:report', resultsDir, reportsDir),
+    recordEvalFeedback: (payload: {
+        threadId: string
+        query?: string
+        answerPreview?: string
+        vote: 'up' | 'down'
+        citedCorrectly?: boolean
+        notes?: string
+        source?: 'manual' | 'prompt'
+    }): Promise<OnlineEvalFeedback> => ipcRenderer.invoke('eval:feedback:record', payload),
+    listEvalFeedback: (limit?: number): Promise<OnlineEvalFeedback[]> => ipcRenderer.invoke('eval:feedback:list', limit),
+    getEvalFeedbackStats: (): Promise<{ total: number; positiveRate: number; citationCorrectRate: number; last7dCount: number }> =>
+        ipcRenderer.invoke('eval:feedback:stats'),
+
+    // ── Personalization memory (opt-in) ─────────────────────
+    addMemoryFact: (payload: {
+        threadId: string
+        key?: string
+        value: string
+        tags?: string[]
+        ttlDays?: number
+        source?: 'manual' | 'auto'
+    }): Promise<MemoryFact> => ipcRenderer.invoke('memory:add', payload),
+    listMemoryFacts: (threadId?: string, includeExpired?: boolean): Promise<MemoryFact[]> =>
+        ipcRenderer.invoke('memory:list', threadId, includeExpired),
+    deleteMemoryFact: (id: string): Promise<boolean> => ipcRenderer.invoke('memory:delete', id),
+    clearThreadMemories: (threadId: string): Promise<{ deleted: number }> => ipcRenderer.invoke('memory:clear-thread', threadId),
+    pruneExpiredMemories: (): Promise<{ deleted: number }> => ipcRenderer.invoke('memory:prune-expired'),
+    previewMemoryContext: (threadId: string, query: string, maxFacts?: number): Promise<{ memories: MemoryFact[]; text: string }> =>
+        ipcRenderer.invoke('memory:preview-context', threadId, query, maxFacts),
 
     // ── Window controls ────────────────────────────────────
     minimizeWindow: (): Promise<void> => ipcRenderer.invoke('window:minimize'),
@@ -107,6 +153,15 @@ contextBridge.exposeInMainWorld('api', {
     cancelScheduledSearch: (id: string) => ipcRenderer.invoke('scheduler:cancel', id),
     deleteScheduledSearch: (id: string) => ipcRenderer.invoke('scheduler:delete', id),
 
+    // Analytics
+    getAnalyticsEvents: (options?: { startDate?: number; endDate?: number; eventTypes?: string[]; format?: 'json' | 'csv' }) =>
+        ipcRenderer.invoke('analytics:get-events', options ?? {}),
+    getAnalyticsSummary: (period: 'hourly' | 'daily' | 'monthly', count?: number) =>
+        ipcRenderer.invoke('analytics:get-summary', period, count),
+    exportAnalytics: (options?: { startDate?: number; endDate?: number; eventTypes?: string[]; format?: 'json' | 'csv' }) =>
+        ipcRenderer.invoke('analytics:export', options ?? { format: 'json' }),
+    clearAnalytics: () => ipcRenderer.invoke('analytics:clear-all'),
+
     // ── Plugins ──────────────────────────────────────────────
     listPlugins: () => ipcRenderer.invoke('plugins:list'),
     installPlugin: (sourcePath: string) => ipcRenderer.invoke('plugins:install', sourcePath),
@@ -121,3 +176,5 @@ contextBridge.exposeInMainWorld('api', {
     deleteCollection: (id: string): Promise<boolean> =>
         ipcRenderer.invoke('collections:delete', id),
 })
+
+

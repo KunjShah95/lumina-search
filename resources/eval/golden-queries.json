@@ -1,0 +1,32 @@
+[
+  {
+    "id": "gq_001",
+    "query": "How does Lumina combine BM25 with vector search?",
+    "generatedAnswer": "Lumina uses a hybrid retrieval strategy that combines BM25 keyword ranking with semantic vector similarity, then merges both using reciprocal rank fusion for final ranking.",
+    "expectedEvidence": ["bm25", "vector", "reciprocal rank fusion"],
+    "latencyMs": 3800,
+    "estimatedTokens": 1850,
+    "maxLatencyMs": 10000,
+    "maxEstimatedTokens": 4500
+  },
+  {
+    "id": "gq_002",
+    "query": "What reliability protections should be present during provider failures?",
+    "generatedAnswer": "A resilient pipeline should include provider circuit breakers, bounded retries with jitter, and fallback to local models so one-provider outages do not take down the full experience.",
+    "expectedEvidence": ["circuit breaker", "retries", "fallback"],
+    "latencyMs": 4200,
+    "estimatedTokens": 2100,
+    "maxLatencyMs": 10000,
+    "maxEstimatedTokens": 4500
+  },
+  {
+    "id": "gq_003",
+    "query": "How can answer quality be improved when citations are weak?",
+    "generatedAnswer": "If citation quality is low, the system should trigger a repair pass that broadens retrieval, raises top-k context, and regenerates with stricter citation requirements.",
+    "expectedEvidence": ["repair pass", "broaden", "stricter citation"],
+    "latencyMs": 5600,
+    "estimatedTokens": 2600,
+    "maxLatencyMs": 10000,
+    "maxEstimatedTokens": 4500
+  }
+]

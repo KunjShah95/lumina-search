@@ -3,6 +3,7 @@ import { SearchResult, FocusMode } from './types'
 interface ContextBuildOptions {
     strictCitations?: boolean
     repairPass?: boolean
+    memoryContext?: string
 }
 
 export class ContextBuilderAgent {
@@ -33,6 +34,12 @@ export class ContextBuilderAgent {
 - This is a repair pass: prioritize factual precision, citation completeness, and conflict acknowledgement.`
             : ''
 
+        const memoryHint = options.memoryContext
+            ? `
+
+${options.memoryContext}`
+            : ''
+
         const sourceBlocks = sources.map((s, i) => {
             const content = s.fullText
                 ? `${s.snippet}\n\n${s.fullText.slice(0, 1500)}`
@@ -48,7 +55,7 @@ RULES:
 - Format your response in clean markdown with headers where appropriate.
 - If sources provide conflicting information, acknowledge both perspectives.
 - Do NOT begin with phrases like "Based on the sources" or "According to the results".
-- Be precise, factual, and genuinely helpful.${strictCitationRules}${repairHint}
+- Be precise, factual, and genuinely helpful.${strictCitationRules}${repairHint}${memoryHint}
 
 SEARCH SOURCES (${sources.length} results):
 

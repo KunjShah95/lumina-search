@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { useHistoryStore } from '../store/historyStore'
 import { useSearchStore } from '../store/searchStore'
 import { useSettingsStore } from '../store/settingsStore'
+import type { AppSettings } from '../../../main/agents/types'
 
 interface Props {
     onClose: () => void
@@ -67,8 +68,8 @@ export default function CommandPalette({ onClose, openSettings, openKB, openBook
                 label: `Toggle theme (currently ${settings.theme})`,
                 group: 'Appearance',
                 run: () => {
-                    const next = settings.theme === 'dark' ? 'light' : settings.theme === 'light' ? 'system' : 'dark'
-                    const updated = { ...settings, theme: next }
+                    const next: AppSettings['theme'] = settings.theme === 'dark' ? 'light' : settings.theme === 'light' ? 'system' : 'dark'
+                    const updated: AppSettings = { ...settings, theme: next }
                     setSettings(updated)
                     window.api.setSettings(updated)
                     onClose()
