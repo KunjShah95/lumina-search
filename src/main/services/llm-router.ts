@@ -2,6 +2,7 @@ import OpenAI from 'openai'
 import Anthropic from '@anthropic-ai/sdk'
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import { AppSettings, Message } from '../agents/types'
+import { getTimeoutManager } from './timeoutManager'
 
 export async function* streamLLM(
     modelId: string,
@@ -47,6 +48,7 @@ async function* streamOllama(
     settings: AppSettings,
     llmSettings: { temperature: number; topP: number; maxTokens: number }
 ): AsyncGenerator<string> {
+    const timeoutMs = getTimeoutManager().getTimeoutFor('llm:stream') || 120000
     const url = `${settings.ollamaUrl.replace('localhost', '127.0.0.1')}/api/chat`
     const response = await fetch(url, {
         method: 'POST',
@@ -64,7 +66,7 @@ async function* streamOllama(
                 ...messages
             ],
         }),
-        signal: AbortSignal.timeout(120000),
+        signal: AbortSignal.timeout(timeoutMs),
     })
 
     if (!response.ok || !response.body) {
@@ -101,6 +103,7 @@ async function* streamLMStudio(
     llmSettings: { temperature: number; topP: number; maxTokens: number }
 ): AsyncGenerator<string> {
     const url = `${settings.lmstudioUrl.replace('localhost', '127.0.0.1')}/v1/chat/completions`
+    const timeoutMs = getTimeoutManager().getTimeoutFor('llm:stream') || 120000
     const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -115,7 +118,7 @@ async function* streamLMStudio(
                 ...messages
             ],
         }),
-        signal: AbortSignal.timeout(120000),
+        signal: AbortSignal.timeout(timeoutMs),
     })
 
     if (!response.ok || !response.body) {
@@ -232,8 +235,9 @@ async function* streamGemini(
 // ── Ollama Model Discovery ─────────────────────────────────
 export async function listOllamaModels(ollamaUrl: string): Promise<string[]> {
     try {
+        const timeoutMs = getTimeoutManager().getTimeoutFor('llm:discovery') || 5000
         const response = await fetch(`${ollamaUrl.replace('localhost', '127.0.0.1')}/api/tags`, {
-            signal: AbortSignal.timeout(3000),
+            signal: AbortSignal.timeout(timeoutMs),
         })
         if (!response.ok) return []
         const data = await response.json() as { models: { name: string }[] }
@@ -246,8 +250,9 @@ export async function listOllamaModels(ollamaUrl: string): Promise<string[]> {
 // ── LM Studio Model Discovery ────────────────────────────────
 export async function listLMStudioModels(lmstudioUrl: string): Promise<string[]> {
     try {
+        const timeoutMs = getTimeoutManager().getTimeoutFor('llm:discovery') || 5000
         const response = await fetch(`${lmstudioUrl.replace('localhost', '127.0.0.1')}/v1/models`, {
-            signal: AbortSignal.timeout(3000),
+            signal: AbortSignal.timeout(timeoutMs),
         })
         if (!response.ok) return []
         const data = await response.json() as { data: { id: string }[] }

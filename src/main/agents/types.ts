@@ -136,7 +136,7 @@ export interface CitationNode {
 // ── Agent Events ────────────────────────────────────────────
 export type AgentEvent =
     | { type: 'phase'; label: string }
-    | { type: 'sources'; data: SearchResult[] }
+    | { type: 'sources'; data: SearchResult[]; partial?: boolean }
     | { type: 'images'; data: ImageResult[] }
     | { type: 'videos'; data: VideoResult[] }
     | { type: 'token'; text: string }
@@ -150,6 +150,7 @@ export type AgentEvent =
     | { type: 'error'; message: string }
 
 export interface Message {
+    searchResults?: SearchResult[]
     role: 'user' | 'assistant'
     content: string
 }
@@ -198,9 +199,14 @@ export interface SearchOpts {
     sessionId?: string
     budgetPolicy?: BudgetPolicy
     memoryPolicy?: MemoryPolicy
+    incremental?: boolean  // Stream results as they arrive
 }
 
 export interface AppSettings {
+    savedSearches: Record<string, any>
+    apiServerPort: number
+    apiServerEnabled: boolean
+    apiServerRequireAuth: boolean
     tavilyKey: string
     braveKey: string
     openaiKey: string
@@ -212,7 +218,7 @@ export interface AppSettings {
     defaultProvider: SearchProvider
     maxSources: number
     scrapePages: boolean
-    theme: 'dark' | 'light' | 'system'
+    theme: 'dark' | 'light' | 'system' | 'amoled'
     temperature: number
     topP: number
     maxTokens: number
@@ -221,9 +227,19 @@ export interface AppSettings {
     memoryEnabled?: boolean
     memoryTtlDays?: number
     memoryMaxFactsPerQuery?: number
+    offlineModeEnabled?: boolean
+    offlineMaxDays?: number
+    deduplicationEnabled?: boolean
+    deduplicationThreshold?: number
+    cacheEnabled?: boolean
+    cacheTtlDays?: number
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
+    savedSearches: {},
+    apiServerPort: 8080,
+    apiServerEnabled: false,
+    apiServerRequireAuth: false,
     tavilyKey: '',
     braveKey: '',
     openaiKey: '',
@@ -244,4 +260,10 @@ export const DEFAULT_SETTINGS: AppSettings = {
     memoryEnabled: false,
     memoryTtlDays: 30,
     memoryMaxFactsPerQuery: 5,
+    offlineModeEnabled: false,
+    offlineMaxDays: 7,
+    deduplicationEnabled: true,
+    deduplicationThreshold: 0.85,
+    cacheEnabled: true,
+    cacheTtlDays: 7,
 }

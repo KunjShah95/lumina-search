@@ -11,6 +11,9 @@ import { budgetPlanner } from './BudgetPlanner'
 import { compareModels } from './AnswerComparator'
 import { buildCitationGraph } from './CitationGraph'
 import { buildMemoryContext, maybeRememberFromQuery } from '../services/memoryProfile'
+import { createLogger } from '../services/logger'
+
+const logger = createLogger('Orchestrator')
 
 /**
  * SearchOrchestrator — Master coordinator agent.
@@ -72,6 +75,36 @@ export class SearchOrchestrator {
         yield { type: 'phase', label: '🔍 Searching the web...' }
 
         const providers = opts.providers.length > 0 ? opts.providers : ['duckduckgo' as const]
+
+        // Incremental mode: yield results as each provider completes
+        if (opts.incremental) {
+            const allSearchPromises = queries.flatMap(q =>
+                providers.map(p => ({
+                    query: q,
+                    provider: p,
+                    promise: new SearchAgent(p).run(q, focusMode)
+                }))
+            )
+
+            const completedResults: SearchResult[] = []
+
+            for (const searchPromise of allSearchPromises) {
+                try {
+                    const results = await searchPromise.promise
+                    if (results.length > 0) {
+                        completedResults.push(...results)
+                        // Yield partial results immediately
+                        const partialMerged = new ResultMergerAgent().run(completedResults, opts.maxSources)
+                        yield { type: 'sources', data: partialMerged, partial: true }
+                    }
+                } catch (err) {
+                    // Continue with other providers
+                    logger.warn(`Incremental search failed for ${searchPromise.provider}`, { error: String(err) })
+                }
+            }
+        }
+
+        // Standard mode: wait for all providers
         const searchSettled = await Promise.allSettled(
             queries.flatMap(q =>
                 providers.map(p => new SearchAgent(p).run(q, focusMode))
@@ -87,9 +120,9 @@ export class SearchOrchestrator {
             return
         }
 
-        // ── Phase 2: Sequential merge & rank ──────────────────
+        // Yield final merged results
         const merged = new ResultMergerAgent().run(allResults, opts.maxSources)
-        yield { type: 'sources', data: merged }
+        yield { type: 'sources', data: merged, partial: false }
 
         // ── Phase 3: Parallel page scraping ───────────────────
         if (opts.scrapePages && merged.length > 0) {
@@ -172,78 +205,83 @@ export class SearchOrchestrator {
 
         // ── Phase 7.5: Auto-repair loop (v2) ─────────────────
         if (shouldTriggerRepair(confidence)) {
-            yield { type: 'phase', label: '🛠️ Repairing answer quality...' }
+            try {
+                yield { type: 'phase', label: '🛠️ Repairing answer quality...' }
 
-            const repairProviders = this.expandProviders(providers)
-            const repairQueries = this.expandQueriesForRepair(query)
+                const repairProviders = this.expandProviders(providers)
+                const repairQueries = this.expandQueriesForRepair(query)
 
-            const repairSettled = await Promise.allSettled(
-                repairQueries.flatMap(q =>
-                    repairProviders.map(p => new SearchAgent(p).run(q, focusMode))
+                const repairSettled = await Promise.allSettled(
+                    repairQueries.flatMap(q =>
+                        repairProviders.map(p => new SearchAgent(p).run(q, focusMode))
+                    )
                 )
-            )
 
-            const repairResults: SearchResult[] = repairSettled
-                .filter((r): r is PromiseFulfilledResult<SearchResult[]> => r.status === 'fulfilled')
-                .flatMap(r => r.value)
+                const repairResults: SearchResult[] = repairSettled
+                    .filter((r): r is PromiseFulfilledResult<SearchResult[]> => r.status === 'fulfilled')
+                    .flatMap(r => r.value)
 
-            const repairedMerged = new ResultMergerAgent().run(
-                [...allResults, ...repairResults],
-                Math.max(opts.maxSources + 3, 8)
-            )
-
-            if (opts.scrapePages && repairedMerged.length > 0) {
-                const scrapeTargets = repairedMerged.slice(0, 5)
-                const scrapedSettled = await Promise.allSettled(
-                    scrapeTargets.map(r => new ScraperAgent().run(r.url))
+                const repairedMerged = new ResultMergerAgent().run(
+                    [...allResults, ...repairResults],
+                    Math.max(opts.maxSources + 3, 8)
                 )
-                scrapedSettled.forEach((result, i) => {
-                    if (result.status === 'fulfilled' && result.value && repairedMerged[i]) {
-                        repairedMerged[i].fullText = result.value
-                    }
+
+                if (opts.scrapePages && repairedMerged.length > 0) {
+                    const scrapeTargets = repairedMerged.slice(0, 5)
+                    const scrapedSettled = await Promise.allSettled(
+                        scrapeTargets.map(r => new ScraperAgent().run(r.url))
+                    )
+                    scrapedSettled.forEach((result, i) => {
+                        if (result.status === 'fulfilled' && result.value && repairedMerged[i]) {
+                            repairedMerged[i].fullText = result.value
+                        }
+                    })
+                }
+
+                const strictContext = new ContextBuilderAgent().run(repairedMerged, focusMode, {
+                    strictCitations: true,
+                    repairPass: true,
+                    memoryContext,
                 })
-            }
 
-            const strictContext = new ContextBuilderAgent().run(repairedMerged, focusMode, {
-                strictCitations: true,
-                repairPass: true,
-                memoryContext,
-            })
+                const repairPlan = budgetPlanner.estimate({
+                    query,
+                    modelId: plannedModel,
+                    contextChars: strictContext.length,
+                    sessionId: opts.sessionId,
+                    policy: opts.budgetPolicy,
+                    confidenceGap: Math.max(0, (70 - confidence.score) / 100),
+                })
+                yield { type: 'cost', data: repairPlan }
 
-            const repairPlan = budgetPlanner.estimate({
-                query,
-                modelId: plannedModel,
-                contextChars: strictContext.length,
-                sessionId: opts.sessionId,
-                policy: opts.budgetPolicy,
-                confidenceGap: Math.max(0, (70 - confidence.score) / 100),
-            })
-            yield { type: 'cost', data: repairPlan }
+                if (repairPlan.shouldBlock) {
+                    // Continue with original answer if repair budget is exhausted.
+                    yield { type: 'phase', label: '⚠️ Repair skipped due to budget limits.' }
+                } else {
+                    const repairedModel = budgetPlanner.selectModelForTier(plannedModel, 'tier3')
+                    const repairAgent = new LLMSynthesisAgent(repairedModel)
+                    let repairedAnswer = ''
+                    const repairContext = repairPlan.contextCompressionRatio < 1
+                        ? this.compressContext(strictContext, repairPlan.contextCompressionRatio)
+                        : strictContext
 
-            if (repairPlan.shouldBlock) {
-                // Continue with original answer if repair budget is exhausted.
-                yield { type: 'phase', label: '⚠️ Repair skipped due to budget limits.' }
-            } else {
-                const repairedModel = budgetPlanner.selectModelForTier(plannedModel, 'tier3')
-                const repairAgent = new LLMSynthesisAgent(repairedModel)
-                let repairedAnswer = ''
-                const repairContext = repairPlan.contextCompressionRatio < 1
-                    ? this.compressContext(strictContext, repairPlan.contextCompressionRatio)
-                    : strictContext
+                    for await (const token of repairAgent.stream(query, repairContext, opts.conversationHistory)) {
+                        repairedAnswer += token
+                    }
 
-                for await (const token of repairAgent.stream(query, repairContext, opts.conversationHistory)) {
-                    repairedAnswer += token
+                    const repairedConfidence = scoreAnswer(repairedAnswer, repairedMerged, query)
+                    if (repairedConfidence.score > confidence.score) {
+                        const repairHeader = '\n\n---\n\n### Revised answer (quality repair pass)\n\n'
+                        yield { type: 'token', text: repairHeader }
+                        yield { type: 'token', text: repairedAnswer }
+                        fullAnswer += `${repairHeader}${repairedAnswer}`
+                        yield { type: 'confidence', data: repairedConfidence }
+                        budgetPlanner.registerUsage(opts.sessionId || 'default', this.estimateAnswerTokens(repairedAnswer))
+                    }
                 }
-
-                const repairedConfidence = scoreAnswer(repairedAnswer, repairedMerged, query)
-                if (repairedConfidence.score > confidence.score) {
-                    const repairHeader = '\n\n---\n\n### Revised answer (quality repair pass)\n\n'
-                    yield { type: 'token', text: repairHeader }
-                    yield { type: 'token', text: repairedAnswer }
-                    fullAnswer += `${repairHeader}${repairedAnswer}`
-                    yield { type: 'confidence', data: repairedConfidence }
-                    budgetPlanner.registerUsage(opts.sessionId || 'default', this.estimateAnswerTokens(repairedAnswer))
-                }
+            } catch (err) {
+                logger.warn('Auto-repair pass failed (non-critical)', { error: String(err) })
+                yield { type: 'phase', label: '⚠️ Quality repair pass failed, returning original answer.' }
             }
         }
 

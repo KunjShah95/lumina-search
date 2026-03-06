@@ -20,6 +20,13 @@ interface VideoResult {
     views: string
 }
 
+export interface SearchFilters {
+    sourceType?: 'all' | 'web' | 'docs' | 'images' | 'videos'
+    dateRange?: { start?: Date; end?: Date }
+    domain?: string
+    language?: string
+}
+
 interface SearchState {
     query: string
     phase: SearchPhase
@@ -35,6 +42,8 @@ interface SearchState {
     focusMode: FocusMode
     activeProvider: SearchProvider
     activeSource: number | null
+    filters: SearchFilters
+    filteredSources: SearchResult[]
 
     setQuery: (q: string) => void
     setPhase: (p: SearchPhase, label?: string) => void
@@ -49,10 +58,12 @@ interface SearchState {
     setFocusMode: (m: FocusMode) => void
     setActiveProvider: (p: SearchProvider) => void
     setActiveSource: (index: number | null) => void
+    setFilters: (f: SearchFilters) => void
+    applyFilters: () => void
     reset: () => void
 }
 
-export const useSearchStore = create<SearchState>((set) => ({
+export const useSearchStore = create<SearchState>((set, get) => ({
     query: '',
     phase: 'idle',
     phaseLabel: '',
@@ -67,10 +78,15 @@ export const useSearchStore = create<SearchState>((set) => ({
     focusMode: 'web',
     activeProvider: 'duckduckgo',
     activeSource: null,
+    filters: {},
+    filteredSources: [],
 
     setQuery: (query) => set({ query }),
     setPhase: (phase, phaseLabel = '') => set({ phase, phaseLabel }),
-    setSources: (sources) => set({ sources }),
+    setSources: (sources) => {
+        set({ sources, filteredSources: sources })
+        get().applyFilters()
+    },
     setImages: (images) => set({ images }),
     setVideos: (videos) => set({ videos }),
     appendToken: (text) => set((s) => ({ answer: s.answer + text })),
@@ -81,8 +97,29 @@ export const useSearchStore = create<SearchState>((set) => ({
     setFocusMode: (focusMode) => set({ focusMode }),
     setActiveProvider: (activeProvider) => set({ activeProvider }),
     setActiveSource: (activeSource) => set({ activeSource }),
+    setFilters: (filters) => {
+        set({ filters })
+        get().applyFilters()
+    },
+    applyFilters: () => {
+        const { sources, filters } = get()
+        let filtered = [...sources]
+
+        if (filters.domain) {
+            filtered = filtered.filter(s => s.domain?.toLowerCase().includes(filters.domain!.toLowerCase()))
+        }
+
+        if (filters.language) {
+            filtered = filtered.filter(s => 
+                s.snippet?.toLowerCase().includes(filters.language!) ||
+                s.title?.toLowerCase().includes(filters.language!)
+            )
+        }
+
+        set({ filteredSources: filtered })
+    },
     reset: () => set({
         phase: 'idle', phaseLabel: '', sources: [], images: [], videos: [], answer: '',
-        followUps: [], error: null, isStreaming: false, activeSource: null,
+        followUps: [], error: null, isStreaming: false, activeSource: null, filters: {}, filteredSources: [],
     }),
 }))

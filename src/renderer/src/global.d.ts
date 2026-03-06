@@ -208,6 +208,38 @@ declare global {
             createCollection: (name: string, description: string, filterQuery?: string) => Promise<Collection>
             updateCollection: (collection: Collection) => Promise<boolean>
             deleteCollection: (id: string) => Promise<boolean>
+            // v1.1.0 Search Analytics
+            searchAnalyticsRecord: (params: {
+                query: string
+                resultCount: number
+                executionTimeMs: number
+                sourcesUsed: string[]
+                llmModel?: string
+                success?: boolean
+            }) => Promise<any>
+            searchAnalyticsGet: () => Promise<any>
+            searchAnalyticsInsights: (options?: { timeRangeMs?: number }) => Promise<any>
+            searchAnalyticsRate: (recordId: string, rating: number, notes?: string) => Promise<boolean>
+            // Saved Searches (v1.1.0)
+            listSavedSearches: (filter?: { isTemplate?: boolean; category?: string; tags?: string[] }) => Promise<any[]>
+            createSavedSearch: (params: { name: string; query: string; description?: string; filters?: any; tags?: string[]; isTemplate?: boolean; category?: string }) => Promise<any>
+            updateSavedSearch: (id: string, updates: any) => Promise<any>
+            deleteSavedSearch: (id: string) => Promise<boolean>
+            executeSavedSearch: (id: string) => Promise<any>
+            toggleSavedSearchStar: (id: string) => Promise<boolean>
+            duplicateSavedSearch: (id: string, newName?: string) => Promise<any>
+            getSavedSearchStats: () => Promise<any>
+            enableSavedSearchRefresh: (id: string, intervalSeconds: number) => Promise<boolean>
+            stopSavedSearchRefresh: (id: string) => Promise<boolean>
+            exportSavedSearches: (filter?: { isTemplate?: boolean }) => Promise<string>
+            importSavedSearches: (jsonData: string) => Promise<{ imported: number; failed: number; errors: string[] }>
+            // PDF Export (v1.1.0)
+            generateAdvancedPDF: (thread: Thread, options: { title: string; author?: string; citationFormat: string; theme: string }) => Promise<{ success: boolean; filePath?: string }>
+            // API Server (v1.1.0)
+            getAPIServerStatus: () => Promise<{ active: boolean; port: number; endpoints: number; webhooks: number }>
+            toggleAPIServer: (active: boolean) => Promise<boolean>
+            getAPIServerConfig: () => Promise<{ port: number; authEnabled: boolean; allowedCORS: string[] }>
+            updateAPIServerConfig: (config: { port?: number; authEnabled?: boolean; allowedCORS?: string[] }) => Promise<boolean>
         }
     }
 }

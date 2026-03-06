@@ -2,6 +2,7 @@
  * Web Page Monitor — Track URL content changes, detect diffs.
  */
 import crypto from 'crypto'
+import { getTimeoutManager } from './timeoutManager'
 
 export interface MonitoredPage {
     id: string
@@ -122,8 +123,9 @@ function startPageCheck(page: MonitoredPage): void {
 
 async function checkForChanges(page: MonitoredPage): Promise<boolean> {
     try {
+        const timeoutMs = getTimeoutManager().getTimeoutFor('search:scraper') || 20000
         const response = await fetch(page.url, {
-            signal: AbortSignal.timeout(15000),
+            signal: AbortSignal.timeout(timeoutMs),
             headers: { 'User-Agent': 'LuminaSearch/1.0 PageMonitor' },
         })
 

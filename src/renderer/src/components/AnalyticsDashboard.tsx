@@ -44,9 +44,10 @@ interface Props {
 export default function AnalyticsDashboard({ onClose }: Props) {
     const { threads } = useHistoryStore()
     const [scheduled, setScheduled] = useState<ScheduledSummary[]>([])
-    const [activeTab, setActiveTab] = useState<'overview' | 'performance' | 'cost'>('overview')
+    const [activeTab, setActiveTab] = useState<'overview' | 'activity' | 'performance' | 'cost'>('overview')
     const [period, setPeriod] = useState<'hourly' | 'daily' | 'monthly'>('daily')
     const [metrics, setMetrics] = useState<AggregatedMetrics[]>([])
+    const [searchData, setSearchData] = useState<any>(null)
     const [loadingMetrics, setLoadingMetrics] = useState(false)
 
     useEffect(() => {
@@ -54,8 +55,12 @@ export default function AnalyticsDashboard({ onClose }: Props) {
             try {
                 const all = await window.api.getScheduledSearches()
                 setScheduled(all)
-            } catch {
-                setScheduled([])
+
+                // Load search analytics if available
+                const analytics = await window.api.searchAnalyticsGet()
+                setSearchData(analytics)
+            } catch (err) {
+                console.error('Failed to load initial analytics:', err)
             }
         })()
         loadMetrics()
@@ -71,6 +76,10 @@ export default function AnalyticsDashboard({ onClose }: Props) {
             const count = period === 'hourly' ? 24 : period === 'daily' ? 30 : 12
             const data = await window.api.getAnalyticsSummary(period, count)
             setMetrics(data || [])
+
+            // Refresh detailed search analytics too
+            const analytics = await window.api.searchAnalyticsGet()
+            setSearchData(analytics)
         } catch (err) {
             console.error('Failed to load analytics metrics:', err)
             setMetrics([])
@@ -147,8 +156,8 @@ export default function AnalyticsDashboard({ onClose }: Props) {
                             <option value="daily">Daily</option>
                             <option value="monthly">Monthly</option>
                         </select>
-                        <button 
-                            className="btn-ghost" 
+                        <button
+                            className="btn-ghost"
                             onClick={handleExport}
                             style={{ padding: '4px 12px' }}
                         >
@@ -159,11 +168,11 @@ export default function AnalyticsDashboard({ onClose }: Props) {
                 </div>
 
                 {/* Tab Navigation */}
-                <div style={{ 
-                    display: 'flex', 
-                    gap: '8px', 
-                    padding: '12px 20px', 
-                    borderBottom: '1px solid var(--border)' 
+                <div style={{
+                    display: 'flex',
+                    gap: '8px',
+                    padding: '12px 20px',
+                    borderBottom: '1px solid var(--border)'
                 }}>
                     <button
                         className={activeTab === 'overview' ? 'tab-button active' : 'tab-button'}
@@ -192,6 +201,20 @@ export default function AnalyticsDashboard({ onClose }: Props) {
                         }}
                     >
                         Performance
+                    </button>
+                    <button
+                        className={activeTab === 'activity' ? 'tab-button active' : 'tab-button'}
+                        onClick={() => setActiveTab('activity')}
+                        style={{
+                            padding: '6px 16px',
+                            border: 'none',
+                            background: activeTab === 'activity' ? 'var(--primary)' : 'transparent',
+                            color: activeTab === 'activity' ? 'white' : 'var(--text)',
+                            borderRadius: '4px',
+                            cursor: 'pointer'
+                        }}
+                    >
+                        Search Activity
                     </button>
                     <button
                         className={activeTab === 'cost' ? 'tab-button active' : 'tab-button'}
@@ -283,6 +306,59 @@ export default function AnalyticsDashboard({ onClose }: Props) {
                         </>
                     )}
 
+                    {/* Search Activity Tab */}
+                    {activeTab === 'activity' && (
+                        <>
+                            <div className="analytics-section">
+                                <div className="analytics-section-title">Top 10 Queries</div>
+                                {searchData?.topQueries?.length > 0 ? (
+                                    <div className="analytics-list">
+                                        {searchData.topQueries.slice(0, 10).map((q: any, i: number) => (
+                                            <div key={i} className="analytics-item">
+                                                <span className="analytics-item-label">{q.query}</span>
+                                                <span className="analytics-item-value">{q.count} searches</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div className="empty-state">No search data available yet.</div>
+                                )}
+                            </div>
+
+                            <div className="analytics-section">
+                                <div className="analytics-section-title">Time of Day Analysis</div>
+                                {searchData?.timeOfDay?.length > 0 ? (
+                                    <div style={{ height: '200px', display: 'flex', alignItems: 'flex-end', gap: '4px', padding: '20px 0' }}>
+                                        {searchData.timeOfDay.map((h: any, i: number) => {
+                                            const max = Math.max(...searchData.timeOfDay.map((d: any) => d.count))
+                                            const height = max > 0 ? (h.count / max) * 100 : 0
+                                            return (
+                                                <div
+                                                    key={i}
+                                                    title={`${h.hour}:00 - ${h.count} searches`}
+                                                    style={{
+                                                        flex: 1,
+                                                        height: `${height}%`,
+                                                        background: 'var(--accent)',
+                                                        borderRadius: '2px 2px 0 0',
+                                                        opacity: 0.3 + (height / 100) * 0.7
+                                                    }}
+                                                />
+                                            )
+                                        })}
+                                    </div>
+                                ) : (
+                                    <div className="empty-state">No time-of-day data available yet.</div>
+                                )}
+                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', color: 'var(--text-3)', marginTop: '8px' }}>
+                                    <span>12 AM</span>
+                                    <span>12 PM</span>
+                                    <span>11 PM</span>
+                                </div>
+                            </div>
+                        </>
+                    )}
+
                     {/* Performance Tab */}
                     {activeTab === 'performance' && (
                         <>
@@ -321,8 +397,8 @@ export default function AnalyticsDashboard({ onClose }: Props) {
                                                         <div key={i} style={{ marginBottom: '8px', display: 'flex', justifyContent: 'space-between' }}>
                                                             <span>{date}</span>
                                                             <span>
-                                                                P50: {m.p50_latency_ms}ms | 
-                                                                P95: {m.p95_latency_ms}ms | 
+                                                                P50: {m.p50_latency_ms}ms |
+                                                                P95: {m.p95_latency_ms}ms |
                                                                 P99: {m.p99_latency_ms}ms
                                                             </span>
                                                         </div>
@@ -388,7 +464,7 @@ export default function AnalyticsDashboard({ onClose }: Props) {
                                         <div className="analytics-card">
                                             <div className="analytics-card-label">30-Day Forecast</div>
                                             <div className="analytics-card-value">
-                                                {metrics.length > 0 
+                                                {metrics.length > 0
                                                     ? formatCost((metrics.slice(-7).reduce((sum, m) => sum + m.total_cost_usd, 0) / 7) * 30)
                                                     : '$0.00'
                                                 }
@@ -410,10 +486,10 @@ export default function AnalyticsDashboard({ onClose }: Props) {
                                                     return Object.entries(providerCosts)
                                                         .sort((a, b) => b[1] - a[1])
                                                         .map(([provider, cost]) => (
-                                                            <div key={provider} style={{ 
-                                                                marginBottom: '8px', 
-                                                                display: 'flex', 
-                                                                justifyContent: 'space-between' 
+                                                            <div key={provider} style={{
+                                                                marginBottom: '8px',
+                                                                display: 'flex',
+                                                                justifyContent: 'space-between'
                                                             }}>
                                                                 <span>{provider}</span>
                                                                 <strong>{formatCost(cost)}</strong>
@@ -435,10 +511,10 @@ export default function AnalyticsDashboard({ onClose }: Props) {
                                                 {metrics.slice(-7).map((m, i) => {
                                                     const date = new Date(m.timestamp).toLocaleDateString()
                                                     return (
-                                                        <div key={i} style={{ 
-                                                            marginBottom: '8px', 
-                                                            display: 'flex', 
-                                                            justifyContent: 'space-between' 
+                                                        <div key={i} style={{
+                                                            marginBottom: '8px',
+                                                            display: 'flex',
+                                                            justifyContent: 'space-between'
                                                         }}>
                                                             <span>{date}</span>
                                                             <strong>{formatCost(m.total_cost_usd)}</strong>

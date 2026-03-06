@@ -147,7 +147,7 @@ Two options available:
 
 #### Privacy-First (100% Offline)
 
-```
+```text
 LLM:        Ollama (local)
 Search:     DuckDuckGo (free, no key)
 Embeddings: No key (skip vector search)

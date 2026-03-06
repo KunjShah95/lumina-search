@@ -218,10 +218,16 @@ export default function SettingsPanel({ onClose }: Props) {
                                 onChange={e => set('theme', e.target.value as 'dark' | 'light' | 'system')}
                             >
                                 <option value="dark">Dark</option>
+                                <option value="amoled">AMOLED Dark</option>
                                 <option value="light">Light</option>
                                 <option value="system">System</option>
                             </select>
                         </div>
+                        {form.theme === 'amoled' && (
+                            <div style={{ fontSize: '0.8em', color: 'var(--text-muted)', marginTop: 4 }}>
+                                Pure black theme optimized for OLED displays
+                            </div>
+                        )}
                     </div>
 
                     {/* Updates */}
@@ -253,6 +259,61 @@ export default function SettingsPanel({ onClose }: Props) {
                             </button>
                         </div>
                         {updateMessage && <div style={{ marginTop: 10, opacity: 0.9 }}>{updateMessage}</div>}
+                    </div>
+
+                    {/* v1.1.0: API Server */}
+                    <div>
+                        <div className="settings-section-title">API Server (v1.1.0)</div>
+                        <div className="settings-field">
+                            <label className="settings-label">
+                                <input
+                                    type="checkbox"
+                                    checked={form.apiServerEnabled}
+                                    onChange={e => set('apiServerEnabled', e.target.checked)}
+                                    style={{ marginRight: 8 }}
+                                />
+                                Enable Local API Server
+                            </label>
+                        </div>
+                        <div className="settings-field">
+                            <label className="settings-label">API Server Port</label>
+                            <input
+                                className="settings-input"
+                                type="number"
+                                min={1024}
+                                max={65535}
+                                value={form.apiServerPort}
+                                onChange={e => set('apiServerPort', Number(e.target.value))}
+                                style={{ fontFamily: 'var(--font)' }}
+                            />
+                        </div>
+                        <div className="settings-field">
+                            <label className="settings-label">
+                                <input
+                                    type="checkbox"
+                                    checked={form.apiServerRequireAuth}
+                                    onChange={e => set('apiServerRequireAuth', e.target.checked)}
+                                    style={{ marginRight: 8 }}
+                                />
+                                Require API Key Authentication
+                            </label>
+                        </div>
+                        <div style={{ fontSize: '0.85em', color: 'var(--text-muted)', marginTop: 8 }}>
+                            Access API at http://localhost:{form.apiServerPort}/api/v1
+                        </div>
+                    </div>
+
+                    {/* v1.1.0: Search Operators Help */}
+                    <div>
+                        <div className="settings-section-title">Search Operators (v1.1.0)</div>
+                        <div style={{ fontSize: '0.85em', color: 'var(--text-muted)', lineHeight: 1.6 }}>
+                            <div><code style={{ background: 'var(--bg-2)', padding: '2px 4px', borderRadius: 3 }}>site:example.com</code> - Search within a domain</div>
+                            <div><code style={{ background: 'var(--bg-2)', padding: '2px 4px', borderRadius: 3 }}>filetype:pdf</code> - Filter by file type</div>
+                            <div><code style={{ background: 'var(--bg-2)', padding: '2px 4px', borderRadius: 3 }}>language:en</code> - Filter by language</div>
+                            <div><code style={{ background: 'var(--bg-2)', padding: '2px 4px', borderRadius: 3 }}>source:web</code> - Filter by source type</div>
+                            <div><code style={{ background: 'var(--bg-2)', padding: '2px 4px', borderRadius: 3 }}>!exclude</code> - Exclude terms</div>
+                            <div><code style={{ background: 'var(--bg-2)', padding: '2px 4px', borderRadius: 3 }}>"exact phrase"</code> - Exact match</div>
+                        </div>
                     </div>
                 </div>
 

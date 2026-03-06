@@ -2,6 +2,21 @@ import React, { useState, useRef, useCallback, useEffect } from 'react'
 import { useSearchStore } from '../store/searchStore'
 import { useSearch } from '../hooks/useSearch'
 import { useKnowledgeBaseStore } from '../store/knowledgeBaseStore'
+import { AnimatePresence } from 'framer-motion'
+import SearchOperatorsGuide from './SearchOperatorsGuide'
+
+interface ParsedSearchQuery {
+    baseQuery: string
+    operators: {
+        sites?: string[]
+        fileTypes?: string[]
+        dateRange?: { start: Date; end: Date }
+        languages?: string[]
+        sources?: string[]
+        excludeTerms?: string[]
+        exactPhrase?: string
+    }
+}
 
 interface Props { isInline?: boolean; placeholder?: string }
 
@@ -9,19 +24,78 @@ export default function SearchBar({ isInline = false, placeholder }: Props) {
     const [value, setValue] = useState('')
     const [showKBPicker, setShowKBPicker] = useState(false)
     const [isListening, setIsListening] = useState(false)
+    const [showOperators, setShowOperators] = useState(false)
     const textareaRef = useRef<HTMLTextAreaElement>(null)
     const kbPickerRef = useRef<HTMLDivElement>(null)
     const recognitionRef = useRef<any>(null)
-    const { isStreaming, phase, focusMode, setFocusMode } = useSearchStore()
+    const { isStreaming, phase, focusMode, setFocusMode, setFilters } = useSearchStore()
     const { runSearch, cancelSearch } = useSearch()
     const { activeKB, knowledgeBases, selectedKBIds, toggleKBSelection, selectAllKBs, clearKBSelection } = useKnowledgeBaseStore()
+
+    const parseSearchOperators = useCallback((query: string): ParsedSearchQuery => {
+        const result: ParsedSearchQuery = {
+            baseQuery: query,
+            operators: {},
+        }
+
+        const siteMatch = query.match(/site:([^\s]+)/gi)
+        if (siteMatch) {
+            result.operators.sites = siteMatch.map(s => s.replace(/site:/gi, ''))
+        }
+
+        const filetypeMatch = query.match(/filetype:([^\s]+)/gi)
+        if (filetypeMatch) {
+            result.operators.fileTypes = filetypeMatch.map(f => f.replace(/filetype:/gi, ''))
+        }
+
+        const langMatch = query.match(/language:([^\s,]+)/gi)
+        if (langMatch) {
+            result.operators.languages = langMatch.map(l => l.replace(/language:/gi, ''))
+        }
+
+        const sourceMatch = query.match(/source:([^\s,]+)/gi)
+        if (sourceMatch) {
+            result.operators.sources = sourceMatch.map(s => s.replace(/source:/gi, ''))
+        }
+
+        const excludeMatches = query.match(/!(\S+)/g)
+        if (excludeMatches) {
+            result.operators.excludeTerms = excludeMatches.map(e => e.substring(1))
+        }
+
+        const quotedMatch = query.match(/"([^"]+)"/g)
+        if (quotedMatch) {
+            result.operators.exactPhrase = quotedMatch.map(q => q.replace(/"/g, '')).join(' ')
+        }
+
+        let cleanQuery = query
+            .replace(/site:[^\s]+/gi, '')
+            .replace(/filetype:[^\s]+/gi, '')
+            .replace(/language:[^\s,]+/gi, '')
+            .replace(/source:[^\s,]+/gi, '')
+            .replace(/!(\S+)/g, '')
+            .replace(/"([^"]+)"/g, '')
+            .replace(/\s+/g, ' ')
+            .trim()
+
+        result.baseQuery = cleanQuery
+
+        return result
+    }, [])
 
     const handleSubmit = useCallback(() => {
         const q = value.trim()
         if (!q || isStreaming) return
-        runSearch(q)
+
+        const parsed = parseSearchOperators(q)
+
+        if (parsed.operators.sites?.length) {
+            setFilters({ domain: parsed.operators.sites[0] })
+        }
+
+        runSearch(parsed.baseQuery)
         if (!isInline) setValue('')
-    }, [value, isStreaming, runSearch, isInline])
+    }, [value, isStreaming, runSearch, isInline, parseSearchOperators, setFilters])
 
     const startVoiceInput = useCallback(() => {
         const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
@@ -62,12 +136,20 @@ export default function SearchBar({ isInline = false, placeholder }: Props) {
             return;
         }
         if (mode === 'all') {
-            // When switching to "All KBs" mode, auto-select all if none selected
             if (selectedKBIds.length === 0 && knowledgeBases.length > 0) {
                 selectAllKBs()
             }
         }
         setFocusMode(mode);
+    }
+
+    const insertOperator = (syntax: string) => {
+        setValue(prev => {
+            const trimmed = prev.trim()
+            return trimmed ? `${trimmed} ${syntax}` : syntax
+        })
+        setShowOperators(false)
+        textareaRef.current?.focus()
     }
 
     // Close KB picker on outside click
@@ -91,7 +173,7 @@ export default function SearchBar({ isInline = false, placeholder }: Props) {
         el.style.height = `${Math.min(el.scrollHeight, 120)}px`
     }, [value])
 
-    // Global shortcuts for search and focus modes
+    // Global shortcuts
     useEffect(() => {
         const onKey = (e: KeyboardEvent) => {
             if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
@@ -122,6 +204,17 @@ export default function SearchBar({ isInline = false, placeholder }: Props) {
 
     return (
         <div className={`search-container ${isInline ? 'search-inline-wrap' : ''}`} style={isInline ? { maxWidth: '100%', padding: 0 } : {}}>
+            <AnimatePresence>
+                {showOperators && (
+                    <div className="operators-guide-popover">
+                        <SearchOperatorsGuide
+                            onClose={() => setShowOperators(false)}
+                            onSelectOperator={insertOperator}
+                        />
+                    </div>
+                )}
+            </AnimatePresence>
+
             <div className="search-box">
                 {!isInline && (
                     <div className="focus-mode-toggle">
@@ -164,26 +257,13 @@ export default function SearchBar({ isInline = false, placeholder }: Props) {
                                     <div className="kb-picker-header">
                                         <span className="kb-picker-title">Select Knowledge Bases</span>
                                         <div className="kb-picker-actions">
-                                            <button
-                                                className="kb-picker-action-btn"
-                                                onClick={selectAllKBs}
-                                            >
-                                                Select All
-                                            </button>
-                                            <button
-                                                className="kb-picker-action-btn"
-                                                onClick={clearKBSelection}
-                                            >
-                                                Clear
-                                            </button>
+                                            <button className="kb-picker-action-btn" onClick={selectAllKBs}>Select All</button>
+                                            <button className="kb-picker-action-btn" onClick={clearKBSelection}>Clear</button>
                                         </div>
                                     </div>
                                     <div className="kb-picker-list">
                                         {knowledgeBases.map(kb => (
-                                            <label
-                                                key={kb.id}
-                                                className={`kb-picker-item ${selectedKBIds.includes(kb.id) ? 'selected' : ''}`}
-                                            >
+                                            <label key={kb.id} className={`kb-picker-item ${selectedKBIds.includes(kb.id) ? 'selected' : ''}`}>
                                                 <input
                                                     type="checkbox"
                                                     checked={selectedKBIds.includes(kb.id)}
@@ -207,13 +287,22 @@ export default function SearchBar({ isInline = false, placeholder }: Props) {
                         </div>
                     </div>
                 )}
+
                 <div className="search-input-row">
+                    <button
+                        className={`action-btn ${showOperators ? 'active' : ''}`}
+                        onClick={() => setShowOperators(!showOperators)}
+                        title="Search Operators Guide"
+                        style={{ background: 'transparent', border: 'none', cursor: 'pointer', opacity: 0.6 }}
+                    >
+                        ⚡
+                    </button>
                     <button
                         className={`voice-input-btn ${isListening ? 'listening' : ''}`}
                         onClick={isListening ? () => recognitionRef.current?.stop() : startVoiceInput}
                         title={isListening ? 'Stop listening' : 'Voice input'}
                     >
-                        {isListening ? '🎤' : '🎤'}
+                        {isListening ? '⏺' : '🎤'}
                     </button>
                     <span className="search-icon">⌕</span>
                     <textarea
@@ -231,33 +320,32 @@ export default function SearchBar({ isInline = false, placeholder }: Props) {
                         autoFocus={!isInline}
                     />
                     {isStreaming ? (
-                        <button className="search-submit" onClick={cancelSearch} title="Stop">
-                            ◼
-                        </button>
+                        <button className="search-submit" onClick={cancelSearch} title="Stop">◼</button>
                     ) : (
-                        <button
-                            className="search-submit"
-                            onClick={handleSubmit}
-                            disabled={!value.trim()}
-                            title="Search (Enter)"
-                        >
-                            ↑
-                        </button>
+                        <button className="search-submit" onClick={handleSubmit} disabled={!value.trim()} title="Search (Enter)">↑</button>
                     )}
                 </div>
+
                 {!isInline && (
                     <div className="search-footer">
-                        <span className="search-hint">⏎ to search · ⇧⏎ for newline · ⌘K to focus</span>
+                        <span className="search-hint">⏎ to search · ⚡ for operators · ⌘K to focus</span>
                         {focusMode === 'all' && selectedCount > 0 && (
                             <span className="search-hint kb-selection-hint">
                                 🔍 {selectedCount} KB{selectedCount !== 1 ? 's' : ''} · {totalDocs} docs
                             </span>
                         )}
-                        {phase !== 'idle' && (
-                            <span className="search-hint" style={{ color: 'var(--accent)' }}>
-                                {phase === 'done' ? '✓ Done' : '● Thinking...'}
-                            </span>
-                        )}
+                        <div className="search-operator-chips" style={{ display: 'flex', gap: '8px', marginTop: '8px' }}>
+                            {['site:github.com', 'filetype:pdf', '!exclude'].map(op => (
+                                <button
+                                    key={op}
+                                    className="suggestion-chip"
+                                    onClick={() => insertOperator(op + ' ')}
+                                    style={{ fontSize: '10px', padding: '2px 8px', borderRadius: '4px', border: '1px solid var(--border)', background: 'var(--bg-2)', color: 'var(--text-3)', cursor: 'pointer' }}
+                                >
+                                    {op}
+                                </button>
+                            ))}
+                        </div>
                     </div>
                 )}
             </div>

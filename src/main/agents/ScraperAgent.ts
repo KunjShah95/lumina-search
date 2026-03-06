@@ -1,14 +1,19 @@
+import { createLogger } from '../services/logger'
+import { getTimeoutManager } from '../services/timeoutManager'
+
+const logger = createLogger('ScraperAgent')
+
 export class ScraperAgent {
     async run(url: string): Promise<string> {
         try {
             // Jina.ai Reader API — free, converts any URL to clean markdown
+            const timeoutMs = getTimeoutManager().getTimeoutFor('search:scraper') || 20000
             const response = await fetch(`https://r.jina.ai/${url}`, {
                 headers: {
-                    'Accept': 'text/plain',
-                    'User-Agent': 'LuminaSearch/1.0',
+                    'Accept': 'text/event-stream',
                     'X-Return-Format': 'markdown',
                 },
-                signal: AbortSignal.timeout(12000),
+                signal: AbortSignal.timeout(timeoutMs),
             })
             if (!response.ok) return ''
             const text = await response.text()

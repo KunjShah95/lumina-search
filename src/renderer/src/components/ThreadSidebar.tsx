@@ -9,6 +9,7 @@ import CollectionsPanel from './CollectionsPanel'
 interface Props {
     open: boolean
     onNewThread: () => void
+    onOpenAnalytics: () => void
 }
 
 export default function ThreadSidebar({ open, onNewThread }: Props) {

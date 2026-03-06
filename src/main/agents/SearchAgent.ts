@@ -1,5 +1,6 @@
 import { SearchResult, FocusMode, SearchProvider, ImageResult, VideoResult } from './types'
 import { getSettings } from '../services/storage'
+import { getTimeoutManager } from '../services/timeoutManager'
 
 export class SearchAgent {
     constructor(private provider: SearchProvider) { }
@@ -52,9 +53,10 @@ export class SearchAgent {
     private async searchBraveImages(query: string, apiKey: string): Promise<ImageResult[]> {
         try {
             const url = `https://api.search.brave.com/res/v1/images/search?q=${encodeURIComponent(query)}&count=20`
+            const timeoutMs = getTimeoutManager().getTimeoutFor('search:agent') || 30000
             const response = await fetch(url, {
                 headers: { 'Accept': 'application/json', 'X-Subscription-Token': apiKey },
-                signal: AbortSignal.timeout(15000),
+                signal: AbortSignal.timeout(timeoutMs),
             })
             if (!response.ok) return []
             const data = await response.json() as { results?: Array<{ url: string; title: string; thumbnail: { src: string }; metadata?: { source: string } }> }
@@ -71,9 +73,10 @@ export class SearchAgent {
     private async searchBraveVideos(query: string, apiKey: string): Promise<VideoResult[]> {
         try {
             const url = `https://api.search.brave.com/res/v1/videos/search?q=${encodeURIComponent(query)}&count=10`
+            const timeoutMs = getTimeoutManager().getTimeoutFor('search:agent') || 30000
             const response = await fetch(url, {
                 headers: { 'Accept': 'application/json', 'X-Subscription-Token': apiKey },
-                signal: AbortSignal.timeout(15000),
+                signal: AbortSignal.timeout(timeoutMs),
             })
             if (!response.ok) return []
             const data = await response.json() as { results?: Array<{ url: string; title: string; thumbnail: { src: string }; channel?: { name: string }; duration?: string; meta?: { hot_rate?: string } }> }
@@ -99,6 +102,7 @@ export class SearchAgent {
     private async searchTavily(query: string): Promise<SearchResult[]> {
         const settings = getSettings()
         if (!settings.tavilyKey) throw new Error('No Tavily API key configured')
+        const timeoutMs = getTimeoutManager().getTimeoutFor('search:agent') || 30000
         const response = await fetch('https://api.tavily.com/search', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -109,7 +113,7 @@ export class SearchAgent {
                 max_results: 10,
                 include_answer: false,
             }),
-            signal: AbortSignal.timeout(15000),
+            signal: AbortSignal.timeout(timeoutMs),
         })
         if (!response.ok) throw new Error(`Tavily ${response.status}`)
         const data = await response.json() as { results: { url: string; title: string; content: string; score: number }[] }
@@ -126,9 +130,10 @@ export class SearchAgent {
         const settings = getSettings()
         if (!settings.braveKey) throw new Error('No Brave API key configured')
         const url = `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=10`
+        const timeoutMs = getTimeoutManager().getTimeoutFor('search:agent') || 30000
         const response = await fetch(url, {
             headers: { 'Accept': 'application/json', 'X-Subscription-Token': settings.braveKey },
-            signal: AbortSignal.timeout(10000),
+            signal: AbortSignal.timeout(timeoutMs),
         })
         if (!response.ok) throw new Error(`Brave ${response.status}`)
         const data = await response.json() as { web?: { results: { url: string; title: string; description: string }[] } }
@@ -143,9 +148,10 @@ export class SearchAgent {
     private async searchDDG(query: string): Promise<SearchResult[]> {
         try {
             const url = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=1`
+            const timeoutMs = getTimeoutManager().getTimeoutFor('search:agent') || 20000
             const response = await fetch(url, {
                 headers: { 'User-Agent': 'LuminaSearch/1.0' },
-                signal: AbortSignal.timeout(10000),
+                signal: AbortSignal.timeout(timeoutMs),
             })
             const data = await response.json() as {
                 Heading?: string; Abstract?: string; AbstractURL?: string;

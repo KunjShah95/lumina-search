@@ -1,6 +1,25 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { AgentEvent, AppSettings, SearchOpts, Thread, Collection, BudgetPolicy, CostEstimate, OnlineEvalFeedback, MemoryFact } from '../main/agents/types'
 
+// Safe IPC invoke wrapper with error handling
+async function safeInvoke<T>(channel: string, ...args: any[]): Promise<T> {
+    try {
+        return await ipcRenderer.invoke(channel, ...args)
+    } catch (error) {
+        console.error(`IPC Error [${channel}]:`, error)
+        throw error
+    }
+}
+
+// Safe IPC send wrapper
+function safeSend(channel: string, ...args: any[]): void {
+    try {
+        ipcRenderer.send(channel, ...args)
+    } catch (error) {
+        console.error(`IPC Send Error [${channel}]:`, error)
+    }
+}
+
 // Expose safe API to renderer via contextBridge
 contextBridge.exposeInMainWorld('api', {
     // ── Search (streaming) ─────────────────────────────────
@@ -10,17 +29,27 @@ contextBridge.exposeInMainWorld('api', {
         onEvent: (event: AgentEvent) => void
     ): string => {
         const requestId = `s_${Date.now()}_${Math.random().toString(36).slice(2)}`
+
+        // Setup error handler for this search
+        const errorHandler = (_e: any, error: any) => {
+            console.error('Search error:', error)
+            onEvent({ type: 'error', message: error?.message || 'Search failed' })
+        }
+
+        ipcRenderer.on(`search:error:${requestId}`, errorHandler)
         ipcRenderer.on(`search:event:${requestId}`, (_e, event: AgentEvent) => onEvent(event))
-        ipcRenderer.send('search:start', { query, opts, requestId })
+        safeSend('search:start', { query, opts, requestId })
+
         return requestId
     },
     cancelSearch: (requestId: string) => {
         ipcRenderer.removeAllListeners(`search:event:${requestId}`)
+        ipcRenderer.removeAllListeners(`search:error:${requestId}`)
     },
 
     // ── Settings ───────────────────────────────────────────
-    getSettings: (): Promise<AppSettings> => ipcRenderer.invoke('settings:get'),
-    setSettings: (settings: AppSettings): Promise<boolean> => ipcRenderer.invoke('settings:set', settings),
+    getSettings: (): Promise<AppSettings> => safeInvoke('settings:get'),
+    setSettings: (settings: AppSettings): Promise<boolean> => safeInvoke('settings:set', settings),
     getUpdaterStatus: (): Promise<{
         available: boolean
         currentVersion: string
@@ -28,32 +57,32 @@ contextBridge.exposeInMainWorld('api', {
         releaseName?: string
         releaseNotes?: string
         stagingPercentage?: number
-    }> => ipcRenderer.invoke('updater:status'),
-    checkForUpdates: (): Promise<boolean> => ipcRenderer.invoke('updater:check'),
-    downloadUpdate: (): Promise<boolean> => ipcRenderer.invoke('updater:download'),
-    installUpdate: (): Promise<boolean> => ipcRenderer.invoke('updater:install'),
-    skipUpdateVersion: (version: string): Promise<boolean> => ipcRenderer.invoke('updater:skip-version', version),
+    }> => safeInvoke('updater:status'),
+    checkForUpdates: (): Promise<boolean> => safeInvoke('updater:check'),
+    downloadUpdate: (): Promise<boolean> => safeInvoke('updater:download'),
+    installUpdate: (): Promise<boolean> => safeInvoke('updater:install'),
+    skipUpdateVersion: (version: string): Promise<boolean> => safeInvoke('updater:skip-version', version),
     // ── History ────────────────────────────────────────────
-    getHistory: (): Promise<Thread[]> => ipcRenderer.invoke('history:get'),
-    saveThread: (thread: Thread): Promise<boolean> => ipcRenderer.invoke('history:save', thread),
-    deleteThread: (id: string): Promise<boolean> => ipcRenderer.invoke('history:delete', id),
-    clearHistory: (): Promise<boolean> => ipcRenderer.invoke('history:clear'),
+    getHistory: (): Promise<Thread[]> => safeInvoke('history:get'),
+    saveThread: (thread: Thread): Promise<boolean> => safeInvoke('history:save', thread),
+    deleteThread: (id: string): Promise<boolean> => safeInvoke('history:delete', id),
+    clearHistory: (): Promise<boolean> => safeInvoke('history:clear'),
 
     // ── Ollama ─────────────────────────────────────────────
-    listOllamaModels: (): Promise<string[]> => ipcRenderer.invoke('ollama:list-models'),
+    listOllamaModels: (): Promise<string[]> => safeInvoke('ollama:list-models'),
 
     // ── LM Studio ─────────────────────────────────────────
-    listLMStudioModels: (): Promise<string[]> => ipcRenderer.invoke('lmstudio:list-models'),
+    listLMStudioModels: (): Promise<string[]> => safeInvoke('lmstudio:list-models'),
 
     // ── Cost planner ───────────────────────────────────────
     estimateCost: (query: string, selectedMode?: string, budgetPolicy?: BudgetPolicy): Promise<CostEstimate> =>
-        ipcRenderer.invoke('cost:estimate', query, selectedMode, budgetPolicy),
+        safeInvoke('cost:estimate', query, selectedMode, budgetPolicy),
 
     // ── Evaluation harness ─────────────────────────────────
     runOfflineEval: (datasetPath?: string, baselinePath?: string, gate?: boolean) =>
-        ipcRenderer.invoke('eval:offline:run', datasetPath, baselinePath, gate),
+        safeInvoke('eval:offline:run', datasetPath, baselinePath, gate),
     generateWeeklyEvalReport: (resultsDir?: string, reportsDir?: string) =>
-        ipcRenderer.invoke('eval:weekly:report', resultsDir, reportsDir),
+        safeInvoke('eval:weekly:report', resultsDir, reportsDir),
     recordEvalFeedback: (payload: {
         threadId: string
         query?: string
@@ -161,6 +190,43 @@ contextBridge.exposeInMainWorld('api', {
     exportAnalytics: (options?: { startDate?: number; endDate?: number; eventTypes?: string[]; format?: 'json' | 'csv' }) =>
         ipcRenderer.invoke('analytics:export', options ?? { format: 'json' }),
     clearAnalytics: () => ipcRenderer.invoke('analytics:clear-all'),
+
+    // ── v1.1.0 Search Analytics ────────────────────────────────
+    searchAnalyticsRecord: (params: {
+        query: string
+        resultCount: number
+        executionTimeMs: number
+        sourcesUsed: string[]
+        llmModel?: string
+        success?: boolean
+    }) => ipcRenderer.invoke('search-analytics:record', params),
+    searchAnalyticsGet: () => ipcRenderer.invoke('search-analytics:get'),
+    searchAnalyticsInsights: (options?: { timeRangeMs?: number }) => ipcRenderer.invoke('search-analytics:insights', options),
+    searchAnalyticsRate: (recordId: string, rating: number, notes?: string) =>
+        ipcRenderer.invoke('search-analytics:rate', recordId, rating, notes),
+
+    // ── Saved Searches (v1.1.0) ────────────────────────────────
+    listSavedSearches: (filter?: any) => ipcRenderer.invoke('saved-searches:list', filter),
+    createSavedSearch: (params: any) => ipcRenderer.invoke('saved-searches:create', params),
+    updateSavedSearch: (id: string, updates: any) => ipcRenderer.invoke('saved-searches:update', id, updates),
+    deleteSavedSearch: (id: string) => ipcRenderer.invoke('saved-searches:delete', id),
+    executeSavedSearch: (id: string) => ipcRenderer.invoke('saved-searches:execute', id),
+    toggleSavedSearchStar: (id: string) => ipcRenderer.invoke('saved-searches:toggle-star', id),
+    duplicateSavedSearch: (id: string, newName?: string) => ipcRenderer.invoke('saved-searches:duplicate', id, newName),
+    getSavedSearchStats: () => ipcRenderer.invoke('saved-searches:get-stats'),
+    enableSavedSearchRefresh: (id: string, intervalSeconds: number) => ipcRenderer.invoke('saved-searches:enable-refresh', id, intervalSeconds),
+    stopSavedSearchRefresh: (id: string) => ipcRenderer.invoke('saved-searches:stop-refresh', id),
+    exportSavedSearches: (filter?: any) => ipcRenderer.invoke('saved-searches:export', filter),
+    importSavedSearches: (jsonData: string) => ipcRenderer.invoke('saved-searches:import', jsonData),
+
+    // ── PDF Export (v1.1.0) ────────────────────────────────────
+    generateAdvancedPDF: (thread: Thread, options: any) => ipcRenderer.invoke('pdf-export:generate', thread, options),
+
+    // ── API Server (v1.1.0) ────────────────────────────────────
+    getAPIServerStatus: () => ipcRenderer.invoke('api-server:get-status'),
+    toggleAPIServer: (active: boolean) => ipcRenderer.invoke('api-server:toggle', active),
+    getAPIServerConfig: () => ipcRenderer.invoke('api-server:get-config'),
+    updateAPIServerConfig: (config: any) => ipcRenderer.invoke('api-server:update-config', config),
 
     // ── Plugins ──────────────────────────────────────────────
     listPlugins: () => ipcRenderer.invoke('plugins:list'),

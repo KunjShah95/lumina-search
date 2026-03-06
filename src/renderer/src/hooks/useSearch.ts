@@ -17,7 +17,7 @@ export function useSearch() {
     const { upsertThread, setActiveThreadId } = useHistoryStore()
     const { activeKB, selectedKBIds } = useKnowledgeBaseStore()
 
-    const runSearch = useCallback((query: string, threadId?: string) => {
+    const runSearch = useCallback((query: string, threadId?: string, searchRequestId?: string) => {
         // Cancel any running search
         if (activeRequestId.current) {
             window.api.cancelSearch(activeRequestId.current)
@@ -31,6 +31,13 @@ export function useSearch() {
         const id = threadId ?? `thread_${Date.now()}`
         setThreadId(id)
         setActiveThreadId(id)
+
+        // Track search start time for analytics
+        const analyticsRequestId = searchRequestId ?? `analytics_${Date.now()}`
+        if (!(window as any).__searchStartTime) {
+            (window as any).__searchStartTime = {}
+        }
+        (window as any).__searchStartTime[analyticsRequestId] = Date.now()
 
         // Persist user message
         conversationHistory.current.push({ role: 'user', content: query })
@@ -210,19 +217,36 @@ export function useSearch() {
                         conversationHistory.current.push({ role: 'assistant', content: answerBuffer })
                         // Preserve existing thread metadata if updating
                         const existingThread = useHistoryStore.getState().threads.find(t => t.id === id)
+                        const currentSources = useSearchStore.getState().sources
                         const thread: Thread = {
                             id,
                             title: query.slice(0, 60),
                             createdAt: existingThread?.createdAt ?? Date.now(),
                             updatedAt: Date.now(),
                             messages: [...conversationHistory.current],
-                            sources: useSearchStore.getState().sources,
+                            sources: currentSources,
                             isPinned: existingThread?.isPinned ?? false,
                             isFavorite: existingThread?.isFavorite ?? false,
                             lastConfidence: lastConfidence ?? existingThread?.lastConfidence,
                         }
                         upsertThread(thread)
                         window.api.saveThread(thread)
+
+                        // Record search analytics
+                        const searchStartTime = (window as any).__searchStartTime?.[id]
+                        if (searchStartTime) {
+                            const executionTime = Date.now() - searchStartTime
+                            window.api.searchAnalyticsRecord({
+                                query,
+                                resultCount: currentSources.length,
+                                executionTimeMs: executionTime,
+                                sourcesUsed: [settings.defaultProvider],
+                                llmModel: model,
+                                success: currentSources.length > 0,
+                            }).catch(() => { /* non-critical */ })
+                            delete (window as any).__searchStartTime?.[id]
+                        }
+
                         // Trigger auto-tagging in the background
                         window.api.autoTagThread(thread).then((tags) => {
                             if (!tags || tags.length === 0) return

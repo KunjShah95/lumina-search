@@ -69,6 +69,68 @@ let data: StorageData = {
     collections: [],
 }
 
+// Backup system for data recovery
+const BACKUP_DIR = path.join(userDataPath, 'backups')
+const MAX_BACKUPS = 5
+
+function createBackup(): void {
+    try {
+        if (!fs.existsSync(dbPath)) return
+        
+        fs.mkdirSync(BACKUP_DIR, { recursive: true })
+        
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
+        const backupPath = path.join(BACKUP_DIR, `data_${timestamp}.json`)
+        
+        fs.copyFileSync(dbPath, backupPath)
+        
+        // Clean old backups
+        const backups = fs.readdirSync(BACKUP_DIR)
+            .filter(f => f.startsWith('data_'))
+            .sort()
+            .reverse()
+        
+        for (let i = MAX_BACKUPS; i < backups.length; i++) {
+            fs.unlinkSync(path.join(BACKUP_DIR, backups[i]))
+        }
+        
+        console.log('Database backup created')
+    } catch (err) {
+        console.error('Failed to create backup:', err)
+    }
+}
+
+function restoreFromBackup(): boolean {
+    try {
+        if (!fs.existsSync(BACKUP_DIR)) return false
+        
+        const backups = fs.readdirSync(BACKUP_DIR)
+            .filter(f => f.startsWith('data_'))
+            .sort()
+            .reverse()
+        
+        if (backups.length === 0) return false
+        
+        const latestBackup = path.join(BACKUP_DIR, backups[0])
+        const raw = fs.readFileSync(latestBackup, 'utf-8')
+        const parsed = JSON.parse(raw)
+        
+        data = {
+            threads: parsed.threads || [],
+            settings: { ...DEFAULT_SETTINGS, ...parsed.settings },
+            knowledgeBases: parsed.knowledgeBases || [],
+            collections: parsed.collections || [],
+        }
+        
+        fs.copyFileSync(latestBackup, dbPath)
+        console.log('Database restored from backup')
+        return true
+    } catch (err) {
+        console.error('Failed to restore from backup:', err)
+        return false
+    }
+}
+
 function loadData(): StorageData {
     try {
         if (fs.existsSync(dbPath)) {
@@ -81,11 +143,43 @@ function loadData(): StorageData {
                 collections: parsed.collections || [],
             }
         }
-    } catch { }
+    } catch (err) {
+        console.error('Failed to load data:', err)
+        data = {
+            threads: [],
+            settings: { ...DEFAULT_SETTINGS },
+            knowledgeBases: [],
+            collections: [],
+        }
+    }
     return data
 }
 
+let saveTimeout: NodeJS.Timeout | null = null
+const SAVE_DEBOUNCE_MS = 1000
+
 function saveData(): void {
+    // Debounce saves to prevent excessive disk I/O
+    if (saveTimeout) {
+        clearTimeout(saveTimeout)
+    }
+    
+    saveTimeout = setTimeout(() => {
+        try {
+            fs.mkdirSync(userDataPath, { recursive: true })
+            fs.writeFileSync(dbPath, JSON.stringify(data, null, 2))
+        } catch (e) {
+            console.error('Failed to save data:', e)
+        }
+    }, SAVE_DEBOUNCE_MS)
+}
+
+function saveDataSync(): void {
+    // Force immediate save for critical data
+    if (saveTimeout) {
+        clearTimeout(saveTimeout)
+        saveTimeout = null
+    }
     try {
         fs.mkdirSync(userDataPath, { recursive: true })
         fs.writeFileSync(dbPath, JSON.stringify(data, null, 2))
@@ -95,7 +189,18 @@ function saveData(): void {
 }
 
 export function initDatabase(): void {
-    loadData()
+    // Try to load existing data, restore from backup if corrupted
+    try {
+        loadData()
+    } catch {
+        // If loading fails, try to restore from backup
+        if (!restoreFromBackup()) {
+            console.warn('Using fresh database - no valid backup found')
+        }
+    }
+    
+    // Create backup on startup
+    createBackup()
 }
 
 // ── Thread Operations ────────────────────────────────────────
@@ -107,15 +212,21 @@ export function getAllThreads(): Thread[] {
     })
 }
 
-export function saveThread(thread: Thread): void {
+export function saveThread(thread: Thread, forceSave: boolean = false): void {
     const idx = data.threads.findIndex(t => t.id === thread.id)
     if (idx !== -1) {
         data.threads[idx] = thread
     } else {
         data.threads.unshift(thread)
     }
+    // Keep only last 200 threads to prevent memory issues
     data.threads = data.threads.slice(0, 200)
-    saveData()
+    
+    if (forceSave) {
+        saveDataSync()
+    } else {
+        saveData()
+    }
 }
 
 export function deleteThreadFromDb(id: string): void {
