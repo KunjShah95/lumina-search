@@ -771,22 +771,26 @@ analytics.importAnalytics(data)
 ## Performance Tips
 
 1. **Cleanup old data regularly**
+
    ```typescript
    analytics.clearOlderThan(90) // Keep last 90 days
    ```
 
 2. **Use pagination for large datasets**
+
    ```typescript
    analytics.getHistory({ limit: 100, offset: 0 })
    ```
 
 3. **Cache frequently accessed data**
+
    ```typescript
    const saved = manager.getAllSearches()
    // Don't call repeatedly, cache results
    ```
 
 4. **Disable webhooks if not needed**
+
    ```typescript
    const server = getLocalAPIServer({ enableWebhooks: false })
    ```
@@ -813,6 +817,7 @@ analytics.importAnalytics(data)
 ---
 
 **Need help?**
+
 - File an issue on [GitHub](https://github.com/KunjShah95/lumina-search/issues)
 - Join [Discord community](https://discord.gg/luminasearch)
 - Read the full [API documentation](API.md)
@@ -820,4 +825,3 @@ analytics.importAnalytics(data)
 ---
 
 **Happy coding!** 🚀✨
-

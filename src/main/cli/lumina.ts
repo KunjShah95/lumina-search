@@ -14,6 +14,7 @@
 import * as fs from 'fs'
 import * as path from 'path'
 import * as http from 'http'
+import * as https from 'https'
 
 interface CLIConfig {
   apiEndpoint: string
@@ -27,10 +28,16 @@ class LuminaCLI {
   private commands: Map<string, (args: string[]) => Promise<void>> = new Map()
 
   constructor() {
+    const outputFormatEnv = process.env.LUMINA_OUTPUT_FORMAT
+    let outputFormat: 'json' | 'table' | 'text' = 'json'
+    if (outputFormatEnv === 'json' || outputFormatEnv === 'table' || outputFormatEnv === 'text') {
+      outputFormat = outputFormatEnv
+    }
+
     this.config = {
       apiEndpoint: process.env.LUMINA_API_ENDPOINT || 'http://localhost:8080',
       apiKey: process.env.LUMINA_API_KEY,
-      outputFormat: (process.env.LUMINA_OUTPUT_FORMAT as any) || 'json',
+      outputFormat,
       colorOutput: process.env.NO_COLOR !== '1',
     }
 
@@ -295,17 +302,30 @@ class LuminaCLI {
         this.print(`Output Format: ${this.config.outputFormat}`)
         this.print(`Color Output: ${this.config.colorOutput}`)
         break
-      case 'set': {
+      case 'set':
         const key = args[1]
         const value = args[2]
         if (!key || !value) throw new Error('Usage: lumina config set <key> <value>')
-        if (key === 'apiEndpoint') this.config.apiEndpoint = value
-        else if (key === 'apiKey') this.config.apiKey = value
-        else if (key === 'outputFormat') this.config.outputFormat = value as 'json' | 'table' | 'text'
-        else if (key === 'colorOutput') this.config.colorOutput = value === 'true'
+        
+        // Update config based on key
+        if (key === 'apiEndpoint') {
+          this.config.apiEndpoint = value
+        } else if (key === 'apiKey') {
+          this.config.apiKey = value
+        } else if (key === 'outputFormat') {
+          if (value === 'json' || value === 'table' || value === 'text') {
+            this.config.outputFormat = value as 'json' | 'table' | 'text'
+          } else {
+            throw new Error(`Invalid output format: ${value}. Valid values: json, table, text`)
+          }
+        } else if (key === 'colorOutput') {
+          this.config.colorOutput = value === 'true' || value === '1' || value === 'yes'
+        } else {
+          throw new Error(`Unknown config key: ${key}`)
+        }
+        
         this.print(`Config updated: ${key} = ${value}`, 'success')
         break
-      }
       default:
         throw new Error('Usage: lumina config [get|set] [key] [value]')
     }
@@ -388,6 +408,9 @@ For more information, visit: https://github.com/KunjShah95/lumina-search
       const url = new URL(this.config.apiEndpoint)
       url.pathname = path
 
+      const isHttps = url.protocol === 'https:'
+      const defaultPort = isHttps ? 443 : 80
+
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
       }
@@ -398,13 +421,16 @@ For more information, visit: https://github.com/KunjShah95/lumina-search
 
       const options: http.RequestOptions = {
         hostname: url.hostname,
-        port: url.port || 80,
+        port: url.port ? parseInt(url.port, 10) : defaultPort,
         path: url.pathname + url.search,
         method,
         headers,
+        timeout: 30000, // 30 second timeout
       }
 
-      const req = http.request(options, (res) => {
+      const client = isHttps ? https : http
+
+      const req = client.request(options, (res) => {
         let body = ''
 
         res.on('data', (chunk) => {
@@ -421,6 +447,10 @@ For more information, visit: https://github.com/KunjShah95/lumina-search
       })
 
       req.on('error', reject)
+      req.on('timeout', () => {
+        req.destroy()
+        reject(new Error('API request timeout'))
+      })
 
       if (data) {
         req.write(JSON.stringify(data))
@@ -437,9 +467,53 @@ For more information, visit: https://github.com/KunjShah95/lumina-search
     if (this.config.outputFormat === 'json') {
       this.print(JSON.stringify(data, null, 2))
     } else if (this.config.outputFormat === 'table') {
-      // Simple table output
-      this.print(JSON.stringify(data, null, 2)) // TODO: Implement table formatting
+      this.printTable(data)
     } else {
+      // text format - just raw output
+      this.print(JSON.stringify(data, null, 2))
+    }
+  }
+
+  /**
+   * Print as table
+   */
+  private printTable(data: any): void {
+    if (Array.isArray(data)) {
+      if (data.length === 0) {
+        this.print('No results')
+        return
+      }
+
+      // Get keys from first object
+      const firstItem = data[0]
+      if (typeof firstItem !== 'object' || firstItem === null) {
+        this.print(JSON.stringify(data, null, 2))
+        return
+      }
+
+      const keys = Object.keys(firstItem)
+      const rows = data.map((item: any) => keys.map((key) => String(item[key] || '')))
+
+      // Calculate column widths
+      const colWidths = keys.map((key, i) => {
+        const maxWidth = Math.max(
+          key.length,
+          Math.max(...rows.map((row) => row[i]?.length || 0))
+        )
+        return Math.min(maxWidth, 30) // Max 30 chars per column
+      })
+
+      // Print header
+      const header = keys.map((key, i) => key.padEnd(colWidths[i])).join(' | ')
+      this.print(header)
+      this.print('-'.repeat(header.length))
+
+      // Print rows
+      rows.forEach((row) => {
+        this.print(row.map((cell, i) => cell.padEnd(colWidths[i])).join(' | '))
+      })
+    } else {
+      // Single object
       this.print(JSON.stringify(data, null, 2))
     }
   }

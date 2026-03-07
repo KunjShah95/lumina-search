@@ -32,7 +32,7 @@ describe('TimeoutManager', () => {
         expect(fn).toHaveBeenCalledOnce()
     })
 
-    it('should timeout when function exceeds timeout', async () => {
+    it('should timeout when function exceeds timeout', { timeout: 10000 }, async () => {
         vi.useFakeTimers()
         const manager = getTimeoutManager()
         let resolveFn: () => void = () => {}
@@ -59,9 +59,9 @@ describe('TimeoutManager', () => {
 
         // Clean up
         resolveFn()
-    }, { timeout: 10000 })
+    })
 
-    it('should call fallback handler on timeout', async () => {
+    it('should call fallback handler on timeout', { timeout: 10000 }, async () => {
         vi.useFakeTimers()
         const manager = getTimeoutManager()
         let resolveFn: () => void = () => {}
@@ -91,9 +91,9 @@ describe('TimeoutManager', () => {
 
         // Clean up
         resolveFn()
-    }, { timeout: 10000 })
+    })
 
-    it('should record timeout statistics', async () => {
+    it('should record timeout statistics', { timeout: 10000 }, async () => {
         vi.useFakeTimers()
         const manager = getTimeoutManager()
         let resolveFn: () => void = () => {}
@@ -118,9 +118,9 @@ describe('TimeoutManager', () => {
 
         // Clean up
         resolveFn()
-    }, { timeout: 10000 })
+    })
 
-    it('should track average timeout duration', async () => {
+    it('should track average timeout duration', { timeout: 10000 }, async () => {
         vi.useFakeTimers()
         const manager = getTimeoutManager()
         let resolve1: () => void = () => {}
@@ -156,7 +156,7 @@ describe('TimeoutManager', () => {
         // Clean up
         resolve1()
         resolve2()
-    }, { timeout: 10000 })
+    })
 
     it('should use default timeout for operation type', async () => {
         const manager = getTimeoutManager()
@@ -186,7 +186,7 @@ describe('TimeoutManager', () => {
         expect(manager.getTimeoutFor('pluginOperation')).toBe(15000) // Unchanged
     })
 
-    it('should execute with abort signal', async () => {
+    it('should execute with abort signal', { timeout: 10000 }, async () => {
         // Use real timers for this test
         const manager = getTimeoutManager()
         const fn = vi.fn(async (signal: AbortSignal) => {
@@ -227,7 +227,7 @@ describe('TimeoutManager', () => {
         // Since the promise will take longer to resolve, the timeout should trigger before completion
         expect(timedOut).toBe(true)
         expect(result).toBeUndefined()
-    }, { timeout: 10000 })
+    })
 
     it('should clear statistics', () => {
         const manager = getTimeoutManager()
@@ -243,7 +243,7 @@ describe('TimeoutManager', () => {
         expect(clearedStats.averageTimeoutMs).toEqual({})
     })
 
-    it('should suggest timeout adjustments based on frequent timeouts', async () => {
+    it('should suggest timeout adjustments based on frequent timeouts', { timeout: 20000 }, async () => {
         // Use real timers for this test
         const manager = getTimeoutManager()
         
@@ -270,7 +270,7 @@ describe('TimeoutManager', () => {
         if (suggestions['ragQuery']) {
             expect(suggestions['ragQuery'].suggested).toBeGreaterThan(suggestions['ragQuery'].current)
         }
-    }, { timeout: 20000 })
+    })
 
     it('should singleton pattern work correctly', () => {
         const manager1 = getTimeoutManager()
@@ -294,7 +294,7 @@ describe('TimeoutManager', () => {
         }
     })
 
-    it('should handle errors in fallback function', async () => {
+    it('should handle errors in fallback function', { timeout: 10000 }, async () => {
         vi.useFakeTimers()
         const manager = getTimeoutManager()
         let resolveFn: () => void = () => {}
@@ -325,6 +325,6 @@ describe('TimeoutManager', () => {
 
         // Clean up
         resolveFn()
-    }, { timeout: 10000 })
+    })
 })
 

@@ -26,12 +26,12 @@ import { getAutoUpdater, registerAutoUpdateHandlers } from './services/autoUpdat
 import { DEFAULT_EVAL_THRESHOLDS, enforceRegressionGate, EvalRunResult, generateWeeklyEvalDashboard, GoldenEvalCase, runOfflineEvaluation, writeEvalRunArtifacts } from './services/evalHarness'
 import { getOnlineEvalFeedback, getOnlineEvalFeedbackStats, recordOnlineEvalFeedback } from './services/evalFeedback'
 import { addMemoryFact, buildMemoryContext, clearThreadMemories, deleteMemoryFact, initMemoryProfileStore, listMemoryFacts, pruneExpiredMemories } from './services/memoryProfile'
-import {
-    initSearchOperators,
-    initSavedSearches,
-    initSearchAnalytics,
-    initPDFExport,
-    initLocalAPIServer,
+import { 
+    initSearchOperators, 
+    initSavedSearches, 
+    initSearchAnalytics, 
+    initPDFExport, 
+    initLocalAPIServer, 
     stopLocalAPIServer,
     getSearchOperators,
     getSavedSearches,
@@ -39,117 +39,6 @@ import {
     getPDFExport,
     getLocalAPIServer,
 } from './services/v1.1.0-init'
-
-// ─────────────────────────────────────────────────────────────
-// GLOBAL STABILITY HANDLERS
-// ─────────────────────────────────────────────────────────────
-
-const stabilityLogger = createLogger('Stability')
-
-// Global error handlers for uncaught exceptions
-process.on('uncaughtException', (error: Error) => {
-    stabilityLogger.error('Uncaught Exception:', {
-        message: error.message,
-        stack: error.stack,
-        timestamp: new Date().toISOString(),
-    })
-
-    // Attempt graceful recovery if possible
-    try {
-        // Save any pending data
-        stabilityLogger.warn('Attempting graceful recovery from uncaught exception')
-
-        // Write crash info to file for debugging
-        const crashInfo = {
-            type: 'uncaughtException',
-            message: error.message,
-            stack: error.stack,
-            timestamp: new Date().toISOString(),
-            memoryUsage: process.memoryUsage(),
-        }
-        const crashFile = join(app.getPath('userData'), 'crash_reports')
-        if (!fs.existsSync(crashFile)) {
-            fs.mkdirSync(crashFile, { recursive: true })
-        }
-        fs.writeFileSync(
-            join(crashFile, `crash_${Date.now()}.json`),
-            JSON.stringify(crashInfo, null, 2)
-        )
-    } catch (e) {
-        stabilityLogger.error('Failed to write crash report:', String(e))
-    }
-})
-
-// Handle unhandled promise rejections
-process.on('unhandledRejection', (reason: any, promise: Promise<any>) => {
-    stabilityLogger.error('Unhandled Promise Rejection:', {
-        reason: reason instanceof Error ? reason.message : String(reason),
-        stack: reason instanceof Error ? reason.stack : undefined,
-        timestamp: new Date().toISOString(),
-    })
-})
-
-// Memory monitoring to prevent crashes from memory leaks
-let memoryWarningCount = 0
-const MAX_MEMORY_MB = 2048 // 2GB limit
-const MEMORY_CHECK_INTERVAL = 60000 // Check every minute
-
-function startMemoryMonitor(): void {
-    setInterval(() => {
-        const memUsage = process.memoryUsage()
-        const heapUsedMB = Math.round(memUsage.heapUsed / 1024 / 1024)
-        const heapTotalMB = Math.round(memUsage.heapTotal / 1024 / 1024)
-        const rssMB = Math.round(memUsage.rss / 1024 / 1024)
-
-        if (rssMB > MAX_MEMORY_MB) {
-            memoryWarningCount++
-            stabilityLogger.error('Memory Critical:', {
-                heapUsed: heapUsedMB,
-                heapTotal: heapTotalMB,
-                rss: rssMB,
-                warnings: memoryWarningCount,
-            })
-
-            // Force garbage collection if available
-            if (global.gc) {
-                stabilityLogger.warn('Forcing garbage collection')
-                global.gc()
-            }
-
-            // If memory is critically high, attempt to reduce memory
-            if (memoryWarningCount > 5 && mainWindow) {
-                stabilityLogger.warn('Clearing renderer cache to free memory')
-                mainWindow.webContents.send('memory:cleanup')
-            }
-        } else if (rssMB > MAX_MEMORY_MB * 0.8) {
-            stabilityLogger.warn('Memory High:', {
-                heapUsed: heapUsedMB,
-                heapTotal: heapTotalMB,
-                rss: rssMB,
-            })
-        }
-    }, MEMORY_CHECK_INTERVAL)
-}
-
-// Prevent multiple instances
-const gotTheLock = app.requestSingleInstanceLock()
-
-if (!gotTheLock) {
-    stabilityLogger.warn('Another instance is already running. Exiting.')
-    app.quit()
-} else {
-    app.on('second-instance', () => {
-        // Someone tried to run a second instance, focus our window
-        if (mainWindow) {
-            if (mainWindow.isMinimized()) mainWindow.restore()
-            mainWindow.focus()
-        }
-    })
-}
-
-// ─────────────────────────────────────────────────────────────
-// APP LOGGING SETUP
-// ─────────────────────────────────────────────────────────────
 
 const logger = createLogger('ipc')
 const isDev = !app.isPackaged
@@ -253,69 +142,15 @@ function createTray(): void {
 
     const contextMenu = Menu.buildFromTemplate([
         {
-            label: 'Show Lumina Search',
+            label: 'Show',
             click: () => {
                 mainWindow?.show()
                 mainWindow?.focus()
             }
         },
-        {
-            label: 'New Search',
-            accelerator: 'CmdOrCtrl+N',
-            click: () => {
-                mainWindow?.show()
-                mainWindow?.focus()
-                mainWindow?.webContents.send('menu:new-search')
-            }
-        },
         { type: 'separator' },
         {
-            label: 'Search Providers',
-            submenu: [
-                { label: 'DuckDuckGo', type: 'radio', checked: true, click: () => setDefaultProvider('duckduckgo') },
-                { label: 'Tavily', type: 'radio', click: () => setDefaultProvider('tavily') },
-                { label: 'Brave Search', type: 'radio', click: () => setDefaultProvider('brave') },
-            ]
-        },
-        { type: 'separator' },
-        {
-            label: 'Focus Mode',
-            submenu: [
-                { label: 'Web Search', type: 'radio', checked: true, click: () => setFocusMode('web') },
-                { label: 'Local KB', type: 'radio', click: () => setFocusMode('local') },
-                { label: 'All (Hybrid)', type: 'radio', click: () => setFocusMode('all') },
-                { label: 'Images', type: 'radio', click: () => setFocusMode('image') },
-                { label: 'Videos', type: 'radio', click: () => setFocusMode('video') },
-            ]
-        },
-        { type: 'separator' },
-        {
-            label: 'Toggle Dark Mode',
-            click: () => {
-                const current = getSettingsFromDb()
-                current.theme = current.theme === 'dark' ? 'light' : 'dark'
-                saveSettingsToDb(current)
-                mainWindow?.webContents.send('settings:changed', current)
-            }
-        },
-        { type: 'separator' },
-        {
-            label: 'Settings',
-            click: () => {
-                mainWindow?.show()
-                mainWindow?.webContents.send('menu:open-settings')
-            }
-        },
-        {
-            label: 'Knowledge Base',
-            click: () => {
-                mainWindow?.show()
-                mainWindow?.webContents.send('menu:open-kb')
-            }
-        },
-        { type: 'separator' },
-        {
-            label: 'Quit Lumina Search',
+            label: 'Quit',
             click: () => {
                 isQuitting = true
                 app.quit()
@@ -333,25 +168,6 @@ function createTray(): void {
             mainWindow?.focus()
         }
     })
-
-    // Double-click to show window
-    tray.on('double-click', () => {
-        mainWindow?.show()
-        mainWindow?.focus()
-    })
-}
-
-function setDefaultProvider(provider: string): void {
-    const settings = getSettingsFromDb()
-    settings.defaultProvider = provider as any
-    saveSettingsToDb(settings)
-    mainWindow?.webContents.send('settings:changed', settings)
-    logger.info(`Default provider changed to: ${provider}`)
-}
-
-function setFocusMode(mode: string): void {
-    mainWindow?.webContents.send('focus-mode:changed', mode)
-    logger.info(`Focus mode changed to: ${mode}`)
 }
 
 function createAppMenu(): void {
@@ -485,7 +301,7 @@ ipcMain.on('search:start', async (event, { query, opts, requestId }: { query: st
         if (!opts || typeof opts !== 'object') {
             throw new Error('Invalid SearchOpts')
         }
-
+        
         const orchestrator = new SearchOrchestrator()
         for await (const agentEvent of orchestrator.run(query, opts)) {
             if (!event.sender.isDestroyed()) {
@@ -523,7 +339,7 @@ ipcMain.handle('window:close', () => {
 
 // ── IPC: Settings ──────────────────────────────────────────
 ipcMain.handle('settings:get', () => getSettingsFromDb())
-ipcMain.handle('settings:set', (_e, settings) => {
+ipcMain.handle('settings:set', (_e, settings) => { 
     try {
         if (!settings || typeof settings !== 'object') {
             throw new Error('Invalid settings object')
@@ -700,7 +516,7 @@ ipcMain.handle('timeout:update', (_e, operation: string, timeoutMs: number) => {
     try {
         const validOp = validateString(operation, 'operation', { minLength: 1, maxLength: 100 })
         const validMs = validateNumber(timeoutMs, 'timeoutMs', { min: 100, max: 600000 })
-
+        
         const timeoutManager = getTimeoutManager()
         timeoutManager.updateTimeout(validOp as any, validMs)
         return timeoutManager.getConfig()
@@ -1081,7 +897,7 @@ ipcMain.handle('rag:ingest-file', async (_e, filePath: string, kbId: string) => 
     try {
         const validFilePath = validateFilePath(filePath, 'filePath')
         const validKbId = validateString(kbId, 'kbId', { minLength: 1, maxLength: 256 })
-
+        
         // Queue ingestion as a HIGH priority task
         const result = await taskQueue.enqueue({
             id: `ingest-${Date.now()}-${Math.random().toString(36).slice(2)}`,
@@ -1094,7 +910,7 @@ ipcMain.handle('rag:ingest-file', async (_e, filePath: string, kbId: string) => 
             },
             maxRetries: 1,
         })
-
+        
         return result
     } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err)
@@ -1110,7 +926,7 @@ ipcMain.handle('rag:ingest-files', async (_e, filePaths: string[], kbId: string)
         for (const filePath of validFilePaths) {
             validateFilePath(filePath, 'filePath')
         }
-
+        
         // Queue all files as separate NORMAL priority tasks
         const results: { file: string; success: boolean; chunks?: number; error?: string }[] = []
         const taskPromises = validFilePaths.map((filePath) =>
@@ -1137,7 +953,7 @@ ipcMain.handle('rag:ingest-files', async (_e, filePaths: string[], kbId: string)
                     })
                 }),
         )
-
+        
         await Promise.all(taskPromises)
         return results
     } catch (err: unknown) {
@@ -1275,7 +1091,7 @@ ipcMain.handle('analytics:get-events', (_e, options: {
     try {
         const { getAnalyticsCollector } = require('./services/analyticsCollector')
         const analytics = getAnalyticsCollector()
-
+        
         return analytics.getEvents({
             startDate: options.startDate,
             endDate: options.endDate,
@@ -1291,13 +1107,13 @@ ipcMain.handle('analytics:get-events', (_e, options: {
 ipcMain.handle('analytics:get-summary', (_e, period: 'hourly' | 'daily' | 'monthly', count?: number) => {
     try {
         const validPeriod = validateString(period, 'period', { pattern: /^(hourly|daily|monthly)$/ }) as 'hourly' | 'daily' | 'monthly'
-        const validCount = count !== undefined
+        const validCount = count !== undefined 
             ? validateNumber(count, 'count', { min: 1, max: 365, isInteger: true })
             : undefined
 
         const { getAnalyticsCollector } = require('./services/analyticsCollector')
         const analytics = getAnalyticsCollector()
-
+        
         return analytics.getSummary(validPeriod, validCount)
     } catch (err) {
         logger.error('analytics:get-summary failed', { error: err })
@@ -1314,7 +1130,7 @@ ipcMain.handle('analytics:export', (_e, options: {
     try {
         const { getAnalyticsCollector } = require('./services/analyticsCollector')
         const analytics = getAnalyticsCollector()
-
+        
         return analytics.export({
             startDate: options.startDate,
             endDate: options.endDate,
@@ -1384,7 +1200,7 @@ ipcMain.handle('saved-searches:create', (_e, params: {
     try {
         const validName = validateString(params.name, 'name', { minLength: 1, maxLength: 255 })
         const validQuery = validateString(params.query, 'query', { minLength: 1, maxLength: 2000 })
-
+        
         const manager = getSavedSearches()
         const search = manager.createSearch({
             name: validName,
@@ -1394,7 +1210,7 @@ ipcMain.handle('saved-searches:create', (_e, params: {
             tags: params.tags,
             category: params.category,
         })
-
+        
         // Persist to database
         const settings = getSettingsFromDb()
         if (!settings.savedSearches) {
@@ -1402,7 +1218,7 @@ ipcMain.handle('saved-searches:create', (_e, params: {
         }
         settings.savedSearches[search.id] = search
         saveSettingsToDb(settings)
-
+        
         return search
     } catch (err) {
         logger.error('saved-searches:create failed', err)
@@ -1436,14 +1252,14 @@ ipcMain.handle('saved-searches:update', (_e, id: string, updates: Record<string,
         const validId = validateString(id, 'id', { minLength: 1, maxLength: 256 })
         const manager = getSavedSearches()
         const updated = manager.updateSearch(validId, updates)
-
+        
         // Persist to database
         const settings = getSettingsFromDb()
         if (settings.savedSearches) {
             settings.savedSearches[validId] = updated
             saveSettingsToDb(settings)
         }
-
+        
         return updated
     } catch (err) {
         logger.error('saved-searches:update failed', err)
@@ -1456,7 +1272,7 @@ ipcMain.handle('saved-searches:delete', (_e, id: string) => {
         const validId = validateString(id, 'id', { minLength: 1, maxLength: 256 })
         const manager = getSavedSearches()
         const success = manager.deleteSearch(validId)
-
+        
         // Persist to database
         if (success) {
             const settings = getSettingsFromDb()
@@ -1465,7 +1281,7 @@ ipcMain.handle('saved-searches:delete', (_e, id: string) => {
                 saveSettingsToDb(settings)
             }
         }
-
+        
         return success
     } catch (err) {
         logger.error('saved-searches:delete failed', err)
@@ -1484,76 +1300,12 @@ ipcMain.handle('saved-searches:execute', (_e, id: string) => {
     }
 })
 
-ipcMain.handle('saved-searches:get-stats', () => {
+ipcMain.handle('saved-searches:stats', () => {
     try {
         const manager = getSavedSearches()
         return manager.getStats()
     } catch (err) {
-        logger.error('saved-searches:get-stats failed', err)
-        throw err
-    }
-})
-
-ipcMain.handle('saved-searches:toggle-star', (_e, id: string) => {
-    try {
-        const manager = getSavedSearches()
-        return manager.toggleStar(id)
-    } catch (err) {
-        logger.error('saved-searches:toggle-star failed', err)
-        throw err
-    }
-})
-
-ipcMain.handle('saved-searches:duplicate', (_e, id: string, newName?: string) => {
-    try {
-        const manager = getSavedSearches()
-        return manager.duplicateSearch(id, newName)
-    } catch (err) {
-        logger.error('saved-searches:duplicate failed', err)
-        throw err
-    }
-})
-
-ipcMain.handle('saved-searches:enable-refresh', (_e, id: string, intervalSeconds: number) => {
-    try {
-        const manager = getSavedSearches()
-        return manager.enableAutoRefresh(id, intervalSeconds, async (search: any) => {
-            if (mainWindow) {
-                mainWindow.webContents.send('saved-searches:refresh-triggered', search)
-            }
-        })
-    } catch (err) {
-        logger.error('saved-searches:enable-refresh failed', err)
-        throw err
-    }
-})
-
-ipcMain.handle('saved-searches:stop-refresh', (_e, id: string) => {
-    try {
-        const manager = getSavedSearches()
-        return manager.stopAutoRefresh(id)
-    } catch (err) {
-        logger.error('saved-searches:stop-refresh failed', err)
-        throw err
-    }
-})
-
-ipcMain.handle('saved-searches:export', (_e, filter) => {
-    try {
-        const manager = getSavedSearches()
-        return manager.exportSearches(filter)
-    } catch (err) {
-        logger.error('saved-searches:export failed', err)
-        throw err
-    }
-})
-
-ipcMain.handle('saved-searches:import', (_e, jsonData: string) => {
-    try {
-        const manager = getSavedSearches()
-        return manager.importSearches(jsonData)
-    } catch (err) {
-        logger.error('saved-searches:import failed', err)
+        logger.error('saved-searches:stats failed', err)
         throw err
     }
 })
@@ -1571,7 +1323,7 @@ ipcMain.handle('search-analytics:record', (_e, params: {
         const validQuery = validateString(params.query, 'query', { minLength: 1, maxLength: 2000 })
         const validCount = validateNumber(params.resultCount, 'resultCount', { min: 0 })
         const validTime = validateNumber(params.executionTimeMs, 'executionTimeMs', { min: 0 })
-
+        
         const manager = getSearchAnalytics()
         const record = manager.recordSearch({
             originalQuery: validQuery,
@@ -1581,7 +1333,7 @@ ipcMain.handle('search-analytics:record', (_e, params: {
             llmModel: params.llmModel,
             success: params.success,
         })
-
+        
         return record
     } catch (err) {
         logger.error('search-analytics:record failed', err)
@@ -1613,7 +1365,7 @@ ipcMain.handle('search-analytics:rate', (_e, recordId: string, rating: number, n
     try {
         const validId = validateString(recordId, 'recordId', { minLength: 1, maxLength: 256 })
         const validRating = validateNumber(rating, 'rating', { min: 1, max: 5 })
-
+        
         const manager = getSearchAnalytics()
         return manager.rateSearch(validId, validRating, notes)
     } catch (err) {
@@ -1634,64 +1386,47 @@ ipcMain.handle('search-analytics:clear', () => {
 })
 
 // ── IPC: v1.1.0 PDF Export ────────────────────────────────────
-ipcMain.handle('pdf-export:generate', async (_e, thread, options) => {
+ipcMain.handle('pdf-export:thread', async (_e, threadId: string, options?: {
+    citationFormat?: 'apa' | 'mla' | 'chicago' | 'harvard'
+    includeTimestamp?: boolean
+    theme?: 'light' | 'dark'
+}) => {
     try {
+        const validId = validateString(threadId, 'threadId', { minLength: 1, maxLength: 256 })
+        const threads = getAllThreads()
+        const thread = threads.find(t => t.id === validId)
+        
+        if (!thread) {
+            throw new Error(`Thread not found: ${validId}`)
+        }
+        
         const manager = getPDFExport()
-        return manager.generateThreadPDF(thread, options)
+        const pdfPath = await manager.generateThreadPDF({
+            id: thread.id,
+            title: thread.title,
+            query: thread.title,
+            response: thread.messages[thread.messages.length - 1]?.content || '',
+            results: thread.messages
+                .filter(m => m.searchResults)
+                .flatMap(m => m.searchResults || [])
+                .map(r => ({
+                    url: r.link || '',
+                    title: r.title || '',
+                    snippet: r.snippet || '',
+                    source: r.source || 'unknown',
+                })),
+            createdAt: new Date(thread.createdAt),
+            model: 'unknown',
+            executionTime: 0,
+        }, {
+            citationFormat: options?.citationFormat || 'apa',
+            includeTimestamp: options?.includeTimestamp !== false,
+            theme: options?.theme || 'light',
+        })
+        
+        return { success: true, path: pdfPath }
     } catch (err) {
-        logger.error('pdf-export:generate failed', err)
-        throw err
-    }
-})
-
-// ── IPC: v1.1.0 API Server ───────────────────────────────────
-ipcMain.handle('api-server:get-status', () => {
-    try {
-        const server = getLocalAPIServer()
-        return {
-            active: server.isRunning(),
-            port: server.getPort(),
-            endpoints: server.getEndpointCount(),
-            webhooks: server.getWebhookCount()
-        }
-    } catch (err) {
-        logger.error('api-server:get-status failed', err)
-        throw err
-    }
-})
-
-ipcMain.handle('api-server:toggle', async (_e, active) => {
-    try {
-        const server = getLocalAPIServer()
-        if (active) {
-            await server.start()
-        } else {
-            await server.stop()
-        }
-        return server.isRunning()
-    } catch (err) {
-        logger.error('api-server:toggle failed', err)
-        throw err
-    }
-})
-
-ipcMain.handle('api-server:get-config', () => {
-    try {
-        const server = getLocalAPIServer()
-        return server.getConfig()
-    } catch (err) {
-        logger.error('api-server:get-config failed', err)
-        throw err
-    }
-})
-
-ipcMain.handle('api-server:update-config', (_e, config) => {
-    try {
-        const server = getLocalAPIServer()
-        server.updateConfig(config)
-        return true
-    } catch (err) {
-        logger.error('api-server:update-config failed', err)
+        logger.error('pdf-export:thread failed', err)
         throw err
     }
 })
@@ -1701,11 +1436,11 @@ ipcMain.handle('pdf-export:bulk', async (_e, threadIds: string[], options?: Reco
         const validIds = validateStringArray(threadIds, 'threadIds', { minLength: 1, maxLength: 50 })
         const threads = getAllThreads()
         const selectedThreads = threads.filter(t => validIds.includes(t.id))
-
+        
         if (selectedThreads.length === 0) {
             throw new Error('No threads found for export')
         }
-
+        
         const manager = getPDFExport()
         const pdfPath = await manager.generateBulkPDF(
             selectedThreads.map(t => ({
@@ -1720,7 +1455,7 @@ ipcMain.handle('pdf-export:bulk', async (_e, threadIds: string[], options?: Reco
             })),
             options
         )
-
+        
         return { success: true, path: pdfPath }
     } catch (err) {
         logger.error('pdf-export:bulk failed', err)
@@ -1769,147 +1504,12 @@ ipcMain.handle('api-server:set-port', (_e, port: number) => {
     }
 })
 
-// ── IPC: v1.1.0 Batch Search ──────────────────────────────
-ipcMain.handle('batch-search:execute', async (_e, options: {
-    queries: string[]
-    concurrency?: number
-    sequential?: boolean
-}) => {
-    try {
-        const { getBatchSearchManager } = await import('./services/batchSearch')
-        const batchManager = getBatchSearchManager()
-
-        const result = await batchManager.executeBatch({
-            queries: options.queries,
-            concurrency: options.concurrency || 3,
-            sequential: options.sequential || false,
-        })
-
-        return result
-    } catch (err) {
-        logger.error('batch-search:execute failed', err)
-        throw err
-    }
-})
-
-ipcMain.handle('batch-search:status', (_e, batchId: string) => {
-    try {
-        const { getBatchSearchManager } = require('./services/batchSearch')
-        const batchManager = getBatchSearchManager()
-        return batchManager.getBatchResult(batchId)
-    } catch (err) {
-        logger.error('batch-search:status failed', err)
-        throw err
-    }
-})
-
-ipcMain.handle('batch-search:cancel', (_e, batchId: string) => {
-    try {
-        const { getBatchSearchManager } = require('./services/batchSearch')
-        const batchManager = getBatchSearchManager()
-        return { success: batchManager.cancelBatch(batchId) }
-    } catch (err) {
-        logger.error('batch-search:cancel failed', err)
-        throw err
-    }
-})
-
-// ── IPC: Webhooks ───────────────────────────────────────────
-ipcMain.handle('webhooks:list', () => {
-    try {
-        const { getWebhookManager } = require('./services/webhookService')
-        const webhookManager = getWebhookManager()
-        return webhookManager.getAllWebhooks()
-    } catch (err) {
-        logger.error('webhooks:list failed', err)
-        throw err
-    }
-})
-
-ipcMain.handle('webhooks:create', (_e, params: {
-    name: string
-    url: string
-    events: string[]
-    secret?: string
-    headers?: Record<string, string>
-}) => {
-    try {
-        const { getWebhookManager } = require('./services/webhookService')
-        const webhookManager = getWebhookManager()
-        return webhookManager.createWebhook(params)
-    } catch (err) {
-        logger.error('webhooks:create failed', err)
-        throw err
-    }
-})
-
-ipcMain.handle('webhooks:update', (_e, id: string, updates: Record<string, any>) => {
-    try {
-        const { getWebhookManager } = require('./services/webhookService')
-        const webhookManager = getWebhookManager()
-        return webhookManager.updateWebhook(id, updates)
-    } catch (err) {
-        logger.error('webhooks:update failed', err)
-        throw err
-    }
-})
-
-ipcMain.handle('webhooks:delete', (_e, id: string) => {
-    try {
-        const { getWebhookManager } = require('./services/webhookService')
-        const webhookManager = getWebhookManager()
-        return { success: webhookManager.deleteWebhook(id) }
-    } catch (err) {
-        logger.error('webhooks:delete failed', err)
-        throw err
-    }
-})
-
-ipcMain.handle('webhooks:toggle', (_e, id: string, active: boolean) => {
-    try {
-        const { getWebhookManager } = require('./services/webhookService')
-        const webhookManager = getWebhookManager()
-        return { success: webhookManager.toggleWebhook(id, active) }
-    } catch (err) {
-        logger.error('webhooks:toggle failed', err)
-        throw err
-    }
-})
-
-ipcMain.handle('webhooks:test', (_e, id: string) => {
-    try {
-        const { getWebhookManager } = require('./services/webhookService')
-        const webhookManager = getWebhookManager()
-        return webhookManager.testWebhook(id)
-    } catch (err) {
-        logger.error('webhooks:test failed', err)
-        throw err
-    }
-})
-
-ipcMain.handle('webhooks:trigger', async (_e, event: string, data: Record<string, any>) => {
-    try {
-        const { getWebhookManager } = require('./services/webhookService')
-        const webhookManager = getWebhookManager()
-        return await webhookManager.trigger(event as any, data)
-    } catch (err) {
-        logger.error('webhooks:trigger failed', err)
-        throw err
-    }
-})
-
 // ── App lifecycle ──────────────────────────────────────────
 let appInitialized = false
 let initializationError: Error | null = null
 
 app.whenReady().then(async () => {
     try {
-        // Apply Windows optimizations early
-        if (process.platform === 'win32') {
-            const { optimizeForSystem } = await import('./services/windowsOptimizations')
-            optimizeForSystem()
-        }
-
         // Show splash screen immediately
         const splashScreen = getSplashScreen()
         await splashScreen.create()
@@ -1939,16 +1539,6 @@ app.whenReady().then(async () => {
                 tokens: stats.totalTokens,
                 cost: stats.totalCostUsd,
             })
-        })
-
-        bootstrap.registerTask('Initializing PostgreSQL database...', 20, async () => {
-            const { initPostgresDatabase } = await import('./services/postgresDB')
-            const pgReady = await initPostgresDatabase()
-            if (pgReady) {
-                logger.info('PostgreSQL database ready')
-            } else {
-                logger.warn('PostgreSQL failed, falling back to JSON storage')
-            }
         })
 
         bootstrap.registerTask('Initializing timeout manager...', 3, async () => {
@@ -2024,40 +1614,11 @@ app.whenReady().then(async () => {
         appInitialized = true
         logger.info('Application initialization complete')
 
-        // Start memory monitoring for stability
-        startMemoryMonitor()
-
         // Now create main window
         mainWindow = createWindow()
         createTray()
         createAppMenu()
         registerGlobalShortcut()
-
-        // Window stability: prevent crashes from renderer errors
-        if (mainWindow) {
-            mainWindow.webContents.on('render-process-gone', (event, details) => {
-                logger.error('Renderer process crashed:', {
-                    reason: details.reason,
-                    exitCode: details.exitCode,
-                })
-
-                // Attempt to recover
-                if (mainWindow && !mainWindow.isDestroyed()) {
-                    mainWindow.reload()
-                }
-            })
-
-            mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
-                logger.error('Failed to load:', { errorCode, errorDescription })
-            })
-
-            mainWindow.webContents.on('render-process-gone', (_event, details) => {
-                logger.error('Renderer process gone:', details)
-                if (mainWindow && !mainWindow.isDestroyed()) {
-                    mainWindow.reload()
-                }
-            })
-        }
 
         app.on('activate', () => {
             if (BrowserWindow.getAllWindows().length === 0) {
@@ -2074,51 +1635,12 @@ app.whenReady().then(async () => {
         const splashScreen = getSplashScreen()
         await splashScreen.close()
         mainWindow = createWindow()
-        if (mainWindow) {
-            mainWindow.webContents.send('app:init-error', { message: error.message })
-        }
+        mainWindow?.webContents.send('app:init-error', { message: error.message })
     }
 })
 
-// Graceful shutdown handler
-async function gracefulShutdown(signal: string): Promise<void> {
-    stabilityLogger.info(`Received ${signal}, performing graceful shutdown...`)
-
-    try {
-        // Stop accepting new requests
-        isQuitting = true
-
-        // Save any pending data
-        stabilityLogger.info('Saving pending data...')
-
-        // Close main window if open
-        if (mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.removeAllListeners('close')
-            mainWindow.close()
-        }
-
-        // Cleanup services
-        await stopLocalAPIServer()
-
-        // Unregister shortcuts
-        globalShortcut.unregisterAll()
-
-        stabilityLogger.info('Graceful shutdown complete')
-        app.exit(0)
-    } catch (error) {
-        stabilityLogger.error('Error during shutdown:', String(error))
-        app.exit(1)
-    }
-}
-
-// Handle termination signals
-process.on('SIGTERM', () => gracefulShutdown('SIGTERM'))
-process.on('SIGINT', () => gracefulShutdown('SIGINT'))
-
 app.on('window-all-closed', () => {
-    if (process.platform !== 'darwin') {
-        gracefulShutdown('window-all-closed')
-    }
+    if (process.platform !== 'darwin') app.quit()
 })
 
 app.on('before-quit', () => {

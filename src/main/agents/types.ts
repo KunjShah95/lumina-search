@@ -1,4 +1,8 @@
 export interface SearchResult {
+    link: string
+    source: string
+    link: string
+    source: string
     url: string
     title: string
     snippet: string
