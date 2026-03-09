@@ -86,7 +86,8 @@ export function getHubNodes(graph: CitationGraph, topN: number = 3): CitationNod
         .slice(0, topN)
 }
 
-function normalizeUrl(url: string): string {
+// Exported URL utility functions for testing
+export function normalizeUrl(url: string): string {
     try {
         const parsed = new URL(url)
         return `${parsed.protocol}//${parsed.host}${parsed.pathname}`.replace(/\/$/, '')
@@ -95,7 +96,7 @@ function normalizeUrl(url: string): string {
     }
 }
 
-function getDomain(url: string): string {
+export function getDomain(url: string): string {
     try {
         return new URL(url).hostname.replace('www.', '')
     } catch {

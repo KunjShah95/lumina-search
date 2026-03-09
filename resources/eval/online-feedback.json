@@ -1,5 +1,245 @@
 [
   {
+    "id": "fb_1773066918910_wc7omo5yvvb",
+    "createdAt": 1773066918910,
+    "threadId": "thread_test_feedback_1",
+    "query": "What is hybrid retrieval?",
+    "answerPreview": "Hybrid retrieval combines BM25 and vector search...",
+    "vote": "up",
+    "citedCorrectly": true,
+    "source": "manual"
+  },
+  {
+    "id": "fb_1773063363521_j5g451y2yv",
+    "createdAt": 1773063363521,
+    "threadId": "thread_test_feedback_1",
+    "query": "What is hybrid retrieval?",
+    "answerPreview": "Hybrid retrieval combines BM25 and vector search...",
+    "vote": "up",
+    "citedCorrectly": true,
+    "source": "manual"
+  },
+  {
+    "id": "fb_1773063230876_ssfad1t7z7b",
+    "createdAt": 1773063230876,
+    "threadId": "thread_test_feedback_1",
+    "query": "What is hybrid retrieval?",
+    "answerPreview": "Hybrid retrieval combines BM25 and vector search...",
+    "vote": "up",
+    "citedCorrectly": true,
+    "source": "manual"
+  },
+  {
+    "id": "fb_1773063221305_43d10n9g77b",
+    "createdAt": 1773063221305,
+    "threadId": "thread_test_feedback_1",
+    "query": "What is hybrid retrieval?",
+    "answerPreview": "Hybrid retrieval combines BM25 and vector search...",
+    "vote": "up",
+    "citedCorrectly": true,
+    "source": "manual"
+  },
+  {
+    "id": "fb_1773063210659_lfptk8r17u8",
+    "createdAt": 1773063210659,
+    "threadId": "thread_test_feedback_1",
+    "query": "What is hybrid retrieval?",
+    "answerPreview": "Hybrid retrieval combines BM25 and vector search...",
+    "vote": "up",
+    "citedCorrectly": true,
+    "source": "manual"
+  },
+  {
+    "id": "fb_1773063103045_3v73nbspuxl",
+    "createdAt": 1773063103045,
+    "threadId": "thread_test_feedback_1",
+    "query": "What is hybrid retrieval?",
+    "answerPreview": "Hybrid retrieval combines BM25 and vector search...",
+    "vote": "up",
+    "citedCorrectly": true,
+    "source": "manual"
+  },
+  {
+    "id": "fb_1773062731797_2vfv4n2mzx",
+    "createdAt": 1773062731797,
+    "threadId": "thread_test_feedback_1",
+    "query": "What is hybrid retrieval?",
+    "answerPreview": "Hybrid retrieval combines BM25 and vector search...",
+    "vote": "up",
+    "citedCorrectly": true,
+    "source": "manual"
+  },
+  {
+    "id": "fb_1773062144296_ez7vxdkan97",
+    "createdAt": 1773062144296,
+    "threadId": "thread_test_feedback_1",
+    "query": "What is hybrid retrieval?",
+    "answerPreview": "Hybrid retrieval combines BM25 and vector search...",
+    "vote": "up",
+    "citedCorrectly": true,
+    "source": "manual"
+  },
+  {
+    "id": "fb_1773062137575_5nubif550qk",
+    "createdAt": 1773062137575,
+    "threadId": "thread_test_feedback_1",
+    "query": "What is hybrid retrieval?",
+    "answerPreview": "Hybrid retrieval combines BM25 and vector search...",
+    "vote": "up",
+    "citedCorrectly": true,
+    "source": "manual"
+  },
+  {
+    "id": "fb_1773062120964_kguigksycf",
+    "createdAt": 1773062120964,
+    "threadId": "thread_test_feedback_1",
+    "query": "What is hybrid retrieval?",
+    "answerPreview": "Hybrid retrieval combines BM25 and vector search...",
+    "vote": "up",
+    "citedCorrectly": true,
+    "source": "manual"
+  },
+  {
+    "id": "fb_1773062095279_s81h864g6m9",
+    "createdAt": 1773062095279,
+    "threadId": "thread_test_feedback_1",
+    "query": "What is hybrid retrieval?",
+    "answerPreview": "Hybrid retrieval combines BM25 and vector search...",
+    "vote": "up",
+    "citedCorrectly": true,
+    "source": "manual"
+  },
+  {
+    "id": "fb_1773062085247_tbf87iiu4n",
+    "createdAt": 1773062085247,
+    "threadId": "thread_test_feedback_1",
+    "query": "What is hybrid retrieval?",
+    "answerPreview": "Hybrid retrieval combines BM25 and vector search...",
+    "vote": "up",
+    "citedCorrectly": true,
+    "source": "manual"
+  },
+  {
+    "id": "fb_1773059963882_5xh5p5qk0g5",
+    "createdAt": 1773059963882,
+    "threadId": "thread_test_feedback_1",
+    "query": "What is hybrid retrieval?",
+    "answerPreview": "Hybrid retrieval combines BM25 and vector search...",
+    "vote": "up",
+    "citedCorrectly": true,
+    "source": "manual"
+  },
+  {
+    "id": "fb_1773059834962_4nvcb0hutdg",
+    "createdAt": 1773059834962,
+    "threadId": "thread_test_feedback_1",
+    "query": "What is hybrid retrieval?",
+    "answerPreview": "Hybrid retrieval combines BM25 and vector search...",
+    "vote": "up",
+    "citedCorrectly": true,
+    "source": "manual"
+  },
+  {
+    "id": "fb_1773058622355_snc7t6a0meh",
+    "createdAt": 1773058622355,
+    "threadId": "thread_test_feedback_1",
+    "query": "What is hybrid retrieval?",
+    "answerPreview": "Hybrid retrieval combines BM25 and vector search...",
+    "vote": "up",
+    "citedCorrectly": true,
+    "source": "manual"
+  },
+  {
+    "id": "fb_1773058346111_uq9kh135gjb",
+    "createdAt": 1773058346111,
+    "threadId": "thread_test_feedback_1",
+    "query": "What is hybrid retrieval?",
+    "answerPreview": "Hybrid retrieval combines BM25 and vector search...",
+    "vote": "up",
+    "citedCorrectly": true,
+    "source": "manual"
+  },
+  {
+    "id": "fb_1773057478345_poh7q6tu29m",
+    "createdAt": 1773057478345,
+    "threadId": "thread_test_feedback_1",
+    "query": "What is hybrid retrieval?",
+    "answerPreview": "Hybrid retrieval combines BM25 and vector search...",
+    "vote": "up",
+    "citedCorrectly": true,
+    "source": "manual"
+  },
+  {
+    "id": "fb_1773057387693_gtv0pr5c9hf",
+    "createdAt": 1773057387693,
+    "threadId": "thread_test_feedback_1",
+    "query": "What is hybrid retrieval?",
+    "answerPreview": "Hybrid retrieval combines BM25 and vector search...",
+    "vote": "up",
+    "citedCorrectly": true,
+    "source": "manual"
+  },
+  {
+    "id": "fb_1773057302905_jarasbtivbh",
+    "createdAt": 1773057302905,
+    "threadId": "thread_test_feedback_1",
+    "query": "What is hybrid retrieval?",
+    "answerPreview": "Hybrid retrieval combines BM25 and vector search...",
+    "vote": "up",
+    "citedCorrectly": true,
+    "source": "manual"
+  },
+  {
+    "id": "fb_1773056886558_cls8gm38duo",
+    "createdAt": 1773056886558,
+    "threadId": "thread_test_feedback_1",
+    "query": "What is hybrid retrieval?",
+    "answerPreview": "Hybrid retrieval combines BM25 and vector search...",
+    "vote": "up",
+    "citedCorrectly": true,
+    "source": "manual"
+  },
+  {
+    "id": "fb_1773056842317_ct5wkdgyjos",
+    "createdAt": 1773056842317,
+    "threadId": "thread_test_feedback_1",
+    "query": "What is hybrid retrieval?",
+    "answerPreview": "Hybrid retrieval combines BM25 and vector search...",
+    "vote": "up",
+    "citedCorrectly": true,
+    "source": "manual"
+  },
+  {
+    "id": "fb_1773056524662_248dlry5rg1",
+    "createdAt": 1773056524662,
+    "threadId": "thread_test_feedback_1",
+    "query": "What is hybrid retrieval?",
+    "answerPreview": "Hybrid retrieval combines BM25 and vector search...",
+    "vote": "up",
+    "citedCorrectly": true,
+    "source": "manual"
+  },
+  {
+    "id": "fb_1773056261111_y6p8l40tv6c",
+    "createdAt": 1773056261111,
+    "threadId": "thread_test_feedback_1",
+    "query": "What is hybrid retrieval?",
+    "answerPreview": "Hybrid retrieval combines BM25 and vector search...",
+    "vote": "up",
+    "citedCorrectly": true,
+    "source": "manual"
+  },
+  {
+    "id": "fb_1772818475117_uewz71j9vnh",
+    "createdAt": 1772818475117,
+    "threadId": "thread_test_feedback_1",
+    "query": "What is hybrid retrieval?",
+    "answerPreview": "Hybrid retrieval combines BM25 and vector search...",
+    "vote": "up",
+    "citedCorrectly": true,
+    "source": "manual"
+  },
+  {
     "id": "fb_1772818432320_q8s5uyzhv2d",
     "createdAt": 1772818432320,
     "threadId": "thread_test_feedback_1",
@@ -490,8 +730,8 @@
     "source": "manual"
   },
   {
-    "id": "fb_1772818475117_uewz71j9vnh",
-    "createdAt": 1772818475117,
+    "id": "fb_1773068721600_3xbm5agixbr",
+    "createdAt": 1773068721600,
     "threadId": "thread_test_feedback_1",
     "query": "What is hybrid retrieval?",
     "answerPreview": "Hybrid retrieval combines BM25 and vector search...",

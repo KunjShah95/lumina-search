@@ -4,7 +4,10 @@
  */
 
 import * as path from 'path'
+import * as fs from 'fs'
+import { app, dialog, BrowserWindow } from 'electron'
 import { createLogger } from './logger'
+import { PDFDocument, StandardFonts, rgb } from 'pdf-lib'
 
 const logger = createLogger('PDFExport')
 
@@ -48,8 +51,9 @@ export class PDFExportManager {
    */
   async generateThreadPDF(thread: ThreadForExport, options: PDFExportOptions = {}): Promise<string> {
     try {
-      const htmlContent = this.generateHTMLForThread(thread, options)
-      const pdfPath = await this.convertHTMLtoPDF(htmlContent, options)
+      const pdfDoc = await this.createPDFDocument(thread, options)
+      const pdfBytes = await pdfDoc.save()
+      const pdfPath = await this.savePDF(pdfBytes, thread.title)
 
       logger.info(`Generated PDF for thread: ${thread.id}`)
       return pdfPath
@@ -64,8 +68,9 @@ export class PDFExportManager {
    */
   async generateBulkPDF(threads: ThreadForExport[], options: PDFExportOptions = {}): Promise<string> {
     try {
-      const htmlContent = this.generateHTMLForBulk(threads, options)
-      const pdfPath = await this.convertHTMLtoPDF(htmlContent, options)
+      const pdfDoc = await this.createBulkPDFDocument(threads, options)
+      const pdfBytes = await pdfDoc.save()
+      const pdfPath = await this.savePDF(pdfBytes, 'compiled-report')
 
       logger.info(`Generated bulk PDF for ${threads.length} threads`)
       return pdfPath
@@ -73,6 +78,330 @@ export class PDFExportManager {
       logger.error(`Failed to generate bulk PDF:`, error)
       throw error
     }
+  }
+
+  /**
+   * Create PDF document for a single thread
+   */
+  private async createPDFDocument(thread: ThreadForExport, options: PDFExportOptions): Promise<PDFDocument> {
+    const { pageSize = 'a4', citationFormat = 'apa', author = 'Lumina Search', includeMetadata = true } = options
+    
+    const pdfDoc = await PDFDocument.create()
+    const font = await pdfDoc.embedFont(StandardFonts.Helvetica)
+    const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold)
+    
+    const pageWidth = pageSize === 'letter' ? 612 : 595
+    const pageHeight = pageSize === 'letter' ? 792 : 842
+    const margin = 50
+    const contentWidth = pageWidth - (margin * 2)
+    
+    let page = pdfDoc.addPage([pageWidth, pageHeight])
+    let y = pageHeight - margin
+    
+    // Title
+    y -= 30
+    const titleSize = 18
+    page.drawText(this.escapePDFText(thread.title), {
+      x: margin,
+      y,
+      size: titleSize,
+      font: boldFont,
+      color: rgb(0.1, 0.1, 0.1),
+      maxWidth: contentWidth,
+    })
+    y -= titleSize + 10
+    
+    // Metadata
+    if (includeMetadata) {
+      const metadataText = [
+        `Query: ${this.escapePDFText(thread.query)}`,
+        `Model: ${thread.model}`,
+        `Execution Time: ${thread.executionTime}ms`,
+        options.includeTimestamp !== false ? `Generated: ${thread.createdAt.toLocaleString()}` : '',
+      ].filter(Boolean).join(' | ')
+      
+      page.drawText(metadataText, {
+        x: margin,
+        y,
+        size: 9,
+        font,
+        color: rgb(0.4, 0.4, 0.4),
+        maxWidth: contentWidth,
+      })
+      y -= 25
+    }
+    
+    // Divider
+    page.drawLine({
+      start: { x: margin, y },
+      end: { x: pageWidth - margin, y },
+      thickness: 1,
+      color: rgb(0.8, 0.8, 0.8),
+    })
+    y -= 20
+    
+    // Response content
+    page.drawText('Response', {
+      x: margin,
+      y,
+      size: 14,
+      font: boldFont,
+      color: rgb(0.1, 0.1, 0.1),
+    })
+    y -= 20
+    
+    // Wrap and draw response text
+    const responseLines = this.wrapText(thread.response, font, 11, contentWidth)
+    for (const line of responseLines) {
+      if (y < margin + 40) {
+        page = pdfDoc.addPage([pageWidth, pageHeight])
+        y = pageHeight - margin
+      }
+      page.drawText(line, {
+        x: margin,
+        y,
+        size: 11,
+        font,
+        color: rgb(0.2, 0.2, 0.2),
+        maxWidth: contentWidth,
+      })
+      y -= 14
+    }
+    
+    y -= 20
+    
+    // Sources
+    if (y < margin + 60) {
+      page = pdfDoc.addPage([pageWidth, pageHeight])
+      y = pageHeight - margin
+    }
+    
+    page.drawText('Sources & References', {
+      x: margin,
+      y,
+      size: 14,
+      font: boldFont,
+      color: rgb(0.1, 0.1, 0.1),
+    })
+    y -= 20
+    
+    // Draw sources
+    for (let i = 0; i < thread.results.length; i++) {
+      const result = thread.results[i]
+      const sourceText = `${i + 1}. ${this.escapePDFText(result.title)}`
+      const urlText = `   ${this.escapePDFText(result.url)}`
+      
+      const titleLines = this.wrapText(sourceText, boldFont, 10, contentWidth)
+      for (const line of titleLines) {
+        if (y < margin + 20) {
+          page = pdfDoc.addPage([pageWidth, pageHeight])
+          y = pageHeight - margin
+        }
+        page.drawText(line, {
+          x: margin,
+          y,
+          size: 10,
+          font: boldFont,
+          color: rgb(0.1, 0.1, 0.1),
+          maxWidth: contentWidth,
+        })
+        y -= 12
+      }
+      
+      const urlLines = this.wrapText(urlText, font, 8, contentWidth)
+      for (const line of urlLines) {
+        if (y < margin + 20) {
+          page = pdfDoc.addPage([pageWidth, pageHeight])
+          y = pageHeight - margin
+        }
+        page.drawText(line, {
+          x: margin,
+          y,
+          size: 8,
+          font,
+          color: rgb(0.3, 0.3, 0.8),
+          maxWidth: contentWidth,
+        })
+        y -= 10
+      }
+      
+      y -= 10
+    }
+    
+    // Bibliography
+    y -= 20
+    if (y < margin + 40) {
+      page = pdfDoc.addPage([pageWidth, pageHeight])
+      y = pageHeight - margin
+    }
+    
+    page.drawText(`Bibliography (${citationFormat.toUpperCase()})`, {
+      x: margin,
+      y,
+      size: 14,
+      font: boldFont,
+      color: rgb(0.1, 0.1, 0.1),
+    })
+    y -= 20
+    
+    const citations = this.formatCitations(thread.results, citationFormat)
+    for (let i = 0; i < citations.length; i++) {
+      const citationText = `${i + 1}. ${citations[i]}`
+      const citationLines = this.wrapText(citationText, font, 9, contentWidth)
+      
+      for (const line of citationLines) {
+        if (y < margin + 20) {
+          page = pdfDoc.addPage([pageWidth, pageHeight])
+          y = pageHeight - margin
+        }
+        page.drawText(line, {
+          x: margin,
+          y,
+          size: 9,
+          font,
+          color: rgb(0.3, 0.3, 0.3),
+          maxWidth: contentWidth,
+        })
+        y -= 11
+      }
+      y -= 5
+    }
+    
+    // Footer
+    const totalPages = pdfDoc.getPageCount()
+    for (let i = 0; i < totalPages; i++) {
+      const footerPage = pdfDoc.getPage(i)
+      footerPage.drawText(`Generated by Lumina Search - Page ${i + 1} of ${totalPages}`, {
+        x: margin,
+        y: 30,
+        size: 8,
+        font,
+        color: rgb(0.5, 0.5, 0.5),
+      })
+    }
+    
+    return pdfDoc
+  }
+
+  /**
+   * Create PDF document for multiple threads
+   */
+  private async createBulkPDFDocument(threads: ThreadForExport[], options: PDFExportOptions): Promise<PDFDocument> {
+    const pdfDoc = await PDFDocument.create()
+    
+    // Add cover page
+    const coverPage = pdfDoc.addPage()
+    const { width, height } = coverPage.getSize()
+    const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold)
+    const font = await pdfDoc.embedFont(StandardFonts.Helvetica)
+    
+    coverPage.drawText('Lumina Search Research Report', {
+      x: 50,
+      y: height - 150,
+      size: 24,
+      font: boldFont,
+      color: rgb(0.1, 0.1, 0.1),
+    })
+    
+    coverPage.drawText(`Compiled Search Results & Responses`, {
+      x: 50,
+      y: height - 180,
+      size: 14,
+      font,
+      color: rgb(0.4, 0.4, 0.4),
+    })
+    
+    coverPage.drawText(`${threads.length} thread${threads.length !== 1 ? 's' : ''}`, {
+      x: 50,
+      y: height - 210,
+      size: 12,
+      font,
+      color: rgb(0.4, 0.4, 0.4),
+    })
+    
+    coverPage.drawText(new Date().toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    }), {
+      x: 50,
+      y: height - 240,
+      size: 12,
+      font,
+      color: rgb(0.4, 0.4, 0.4),
+    })
+    
+    // Add each thread
+    for (const thread of threads) {
+      const threadDoc = await this.createPDFDocument(thread, options)
+      const copiedPages = await pdfDoc.copyPages(threadDoc, threadDoc.getPageIndices())
+      for (const copiedPage of copiedPages) {
+        pdfDoc.addPage(copiedPage)
+      }
+    }
+    
+    return pdfDoc
+  }
+
+  /**
+   * Save PDF bytes to file
+   */
+  private async savePDF(pdfBytes: Uint8Array, title: string): Promise<string> {
+    const userDataPath = app?.getPath?.('userData') || process.cwd()
+    const sanitizedTitle = title.replace(/[^a-z0-9]/gi, '_').substring(0, 50)
+    const timestamp = Date.now()
+    const fileName = `${sanitizedTitle}_${timestamp}.pdf`
+    const filePath = path.join(userDataPath, 'exports', fileName)
+    
+    // Ensure directory exists
+    const dir = path.dirname(filePath)
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true })
+    }
+    
+    fs.writeFileSync(filePath, pdfBytes)
+    logger.info(`PDF saved to: ${filePath}`)
+    
+    return filePath
+  }
+
+  /**
+   * Wrap text to fit within width
+   */
+  private wrapText(text: string, font: any, fontSize: number, maxWidth: number): string[] {
+    const words = text.split(' ')
+    const lines: string[] = []
+    let currentLine = ''
+    
+    for (const word of words) {
+      const testLine = currentLine ? `${currentLine} ${word}` : word
+      const width = font.widthOfTextAtSize(testLine, fontSize)
+      
+      if (width > maxWidth && currentLine) {
+        lines.push(currentLine)
+        currentLine = word
+      } else {
+        currentLine = testLine
+      }
+    }
+    
+    if (currentLine) {
+      lines.push(currentLine)
+    }
+    
+    return lines
+  }
+
+  /**
+   * Escape text for PDF
+   */
+  private escapePDFText(text: string): string {
+    return text
+      .replace(/\\/g, '\\\\')
+      .replace(/\(/g, '\\(')
+      .replace(/\)/g, '\\)')
+      .replace(/\n/g, ' ')
+      .substring(0, 500) // Limit length
   }
 
   /**

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, Component, ReactNode } from 'react'
+import React, { useState, useEffect, useCallback, Component, ReactNode, lazy, Suspense } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import ThreadSidebar from './components/ThreadSidebar'
 import SearchBar from './components/SearchBar'
@@ -9,20 +9,39 @@ import VideoCards from './components/VideoCards'
 import AnswerPanel from './components/AnswerPanel'
 import ModelPicker from './components/ModelPicker'
 import SettingsPanel from './components/SettingsPanel'
-import KnowledgeBasePanel from './components/KnowledgeBasePanel'
-import KeyboardShortcutsPanel from './components/KeyboardShortcutsPanel'
-import BookmarksPanel from './components/BookmarksPanel'
-import CommandPalette from './components/CommandPalette'
-import AnalyticsDashboard from './components/AnalyticsDashboard'
-import OnboardingWizard from './components/OnboardingWizard'
-import SavedSearchesPanel from './components/SavedSearchesPanel'
-import PDFExportDialog from './components/PDFExportDialog'
-import APIServerControl from './components/APIServerControl'
+import QuickSettingsBar from './components/QuickSettingsBar'
 import { useSettingsStore } from './store/settingsStore'
 import { useHistoryStore } from './store/historyStore'
 import { useSearchStore } from './store/searchStore'
 import { useKnowledgeBaseStore } from './store/knowledgeBaseStore'
 import { useSearch } from './hooks/useSearch'
+
+// Lazy load heavy components for better bundle size
+const KnowledgeBasePanel = lazy(() => import('./components/KnowledgeBasePanel'))
+const KeyboardShortcutsPanel = lazy(() => import('./components/KeyboardShortcutsPanel'))
+const BookmarksPanel = lazy(() => import('./components/BookmarksPanel'))
+const CommandPalette = lazy(() => import('./components/CommandPalette'))
+const AnalyticsDashboard = lazy(() => import('./components/AnalyticsDashboard'))
+const OnboardingWizard = lazy(() => import('./components/OnboardingWizard'))
+const SavedSearchesPanel = lazy(() => import('./components/SavedSearchesPanel'))
+const PDFExportDialog = lazy(() => import('./components/PDFExportDialog'))
+const APIServerControl = lazy(() => import('./components/APIServerControl'))
+const BatchSearchPanel = lazy(() => import('./components/BatchSearchPanel'))
+
+// Loading fallback for lazy components
+function LazyLoader() {
+    return (
+        <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            height: '100%',
+            color: 'var(--text-3)'
+        }}>
+            <div className="loading-spinner" />
+        </div>
+    )
+}
 
 // Error Boundary for stability
 class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean; error?: Error }> {
@@ -98,6 +117,7 @@ export default function App() {
     const [savedSearchesOpen, setSavedSearchesOpen] = useState(false)
     const [pdfExportOpen, setPdfExportOpen] = useState(false)
     const [apiControlOpen, setApiControlOpen] = useState(false)
+    const [batchSearchOpen, setBatchSearchOpen] = useState(false)
 
     const { settings, setSettings, setOllamaModels, setLMStudioModels } = useSettingsStore()
     const { currentThread, setThreads } = useHistoryStore()
@@ -168,6 +188,29 @@ export default function App() {
         runSearch(query)
     }
 
+    const handleSaveCurrentSearch = async () => {
+        const { query: currentQuery } = useSearchStore.getState()
+        const { filters } = useSearchStore.getState()
+        const { settings } = useSettingsStore.getState()
+        
+        const searchName = window.prompt('Save this search as:', currentQuery.slice(0, 50))
+        if (!searchName) return
+
+        try {
+            await window.api.createSavedSearch({
+                name: searchName,
+                query: currentQuery,
+                description: `Created on ${new Date().toLocaleString()}`,
+                filters: filters || {},
+                isTemplate: false,
+                category: 'Recent Searches',
+            })
+            alert('✅ Search saved successfully!')
+        } catch (err) {
+            alert(`Failed to save search: ${err instanceof Error ? err.message : String(err)}`)
+        }
+    }
+
     const isInSearch = phase !== 'idle'
 
     return (
@@ -201,6 +244,8 @@ export default function App() {
                             <button className="icon-btn" onClick={() => setSettingsOpen(true)} title="Settings">⚙</button>
                         </div>
                     </div>
+
+                    <QuickSettingsBar />
 
                     {/* Page */}
                     <div className="page-scroll">
@@ -265,6 +310,10 @@ export default function App() {
                         pointerEvents: 'none'
                     }}>
                         <div style={{ pointerEvents: 'auto', display: 'flex', gap: '8px' }}>
+                            {currentThread && (
+                                <button className="footer-btn" onClick={() => handleSaveCurrentSearch()} title="Save current search">💾 Save</button>
+                            )}
+                            <button className="footer-btn" onClick={() => setBatchSearchOpen(true)} title="Batch Search">🗂 Batch</button>
                             <button className="footer-btn" onClick={() => setApiControlOpen(true)} title="API Server">🚀 AI Server</button>
                             <button className="footer-btn" onClick={() => setAnalyticsOpen(true)} title="Analytics">📊 Trends</button>
                             {currentThread && (
@@ -313,6 +362,7 @@ export default function App() {
                     {savedSearchesOpen && <SavedSearchesPanel onClose={() => setSavedSearchesOpen(false)} onExecute={handleExecuteSavedSearch} />}
                     {pdfExportOpen && currentThread && <PDFExportDialog thread={currentThread} onClose={() => setPdfExportOpen(false)} />}
                     {apiControlOpen && <APIServerControl onClose={() => setApiControlOpen(false)} />}
+                    {batchSearchOpen && <BatchSearchPanel onClose={() => setBatchSearchOpen(false)} />}
                     {showOnboarding && (
                         <OnboardingWizard
                             onComplete={async () => {

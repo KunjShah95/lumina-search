@@ -157,7 +157,7 @@ These should be implemented first as they have high user impact with moderate ef
 
 ### 1. **Advanced Search Operators** (2-3 days)
 
-```
+```text
 Syntax support:
 site:domain.com - search within specific domain
 filetype:pdf - filter by file type

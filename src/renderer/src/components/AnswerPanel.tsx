@@ -1,4 +1,4 @@
-import React, { useCallback, useState, useRef } from 'react'
+import React, { useCallback, useState, useRef, useEffect, useMemo } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeHighlight from 'rehype-highlight'
@@ -6,6 +6,7 @@ import { useSearchStore } from '../store/searchStore'
 import { useSearch } from '../hooks/useSearch'
 import { useHistoryStore } from '../store/historyStore'
 import { threadToMarkdown, downloadMarkdown, generateFilename } from '../utils/export'
+import { encodeThreadToShareLink } from '../utils/shareCode'
 import NoteEditor from './NoteEditor'
 
 export default function AnswerPanel() {
@@ -20,22 +21,43 @@ export default function AnswerPanel() {
     const [feedbackVote, setFeedbackVote] = useState<'up' | 'down' | null>(null)
     const [citationFeedback, setCitationFeedback] = useState<boolean | null>(null)
     const [feedbackSaved, setFeedbackSaved] = useState(false)
+    const [copyStatus, setCopyStatus] = useState<string | null>(null)
 
     const copyAnswer = useCallback(() => {
         navigator.clipboard.writeText(answer)
+        setCopyStatus('Copied answer')
     }, [answer])
+
+    const copyWithCitations = useCallback(() => {
+        const sourceLines = sources.map((s, i) => `[${i + 1}] ${s.title}${s.url ? ` - ${s.url}` : ''}`)
+        const payload = sourceLines.length > 0
+            ? `${answer}\n\nSources:\n${sourceLines.join('\n')}`
+            : answer
+        navigator.clipboard.writeText(payload)
+        setCopyStatus('Copied with citations')
+    }, [answer, sources])
+
+    const copyAsMarkdown = useCallback(() => {
+        const thread = threads.find(t => t.id === threadId)
+        if (!thread) return
+        const markdown = threadToMarkdown(thread)
+        navigator.clipboard.writeText(markdown)
+        setCopyStatus('Copied as Markdown')
+    }, [threadId, threads])
 
     const copyAsHTML = useCallback(() => {
         const thread = threads.find(t => t.id === threadId)
         if (!thread) return
         const html = `<h1>${thread.title}</h1>\n\n${thread.messages.map(m => `**${m.role}:** ${m.content}`).join('\n\n')}`
         navigator.clipboard.writeText(html)
+        setCopyStatus('Copied as HTML')
     }, [threadId, threads])
 
     const copyAsJSON = useCallback(() => {
         const thread = threads.find(t => t.id === threadId)
         if (!thread) return
         navigator.clipboard.writeText(JSON.stringify(thread, null, 2))
+        setCopyStatus('Copied as JSON')
     }, [threadId, threads])
 
     const exportThread = useCallback(() => {
@@ -54,9 +76,19 @@ export default function AnswerPanel() {
             await navigator.clipboard.writeText(
                 `🔍 ${thread.title}\n\n${thread.messages.find(m => m.role === 'assistant')?.content.slice(0, 500)}...\n\nSources: ${thread.sources.map(s => s.url).join(', ')}`
             )
+            setCopyStatus('Copied share snippet')
         } catch (err) {
             console.error('Failed to share:', err)
         }
+    }, [threadId, threads])
+
+    const copyShareCode = useCallback(async () => {
+        const thread = threads.find(t => t.id === threadId)
+        if (!thread) return
+
+        const shareLink = encodeThreadToShareLink(thread)
+        await navigator.clipboard.writeText(shareLink)
+        setCopyStatus('Copied share code')
     }, [threadId, threads])
 
     const exportAsPDF = useCallback(async () => {
@@ -123,6 +155,36 @@ export default function AnswerPanel() {
         }
     }, [threadId, answer, threads])
 
+    const readingMeta = useMemo(() => {
+        const words = answer.trim() ? answer.trim().split(/\s+/).length : 0
+        const codeBlocks = (answer.match(/```[\s\S]*?```/g) || []).length
+        const wpm = 200
+        const base = words > 0 ? Math.ceil(words / wpm) : 0
+        const withCode = Math.max(0, Math.ceil(base + codeBlocks * 0.5))
+        return {
+            words,
+            minutes: withCode,
+            show: words >= 100,
+        }
+    }, [answer])
+
+    useEffect(() => {
+        if (!copyStatus) return
+        const t = setTimeout(() => setCopyStatus(null), 1400)
+        return () => clearTimeout(t)
+    }, [copyStatus])
+
+    useEffect(() => {
+        const onKey = (e: KeyboardEvent) => {
+            if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === 'c') {
+                e.preventDefault()
+                copyWithCitations()
+            }
+        }
+        window.addEventListener('keydown', onKey)
+        return () => window.removeEventListener('keydown', onKey)
+    }, [copyWithCitations])
+
     return (
         <div className="answer-section">
             {/* Phase label */}
@@ -149,6 +211,11 @@ export default function AnswerPanel() {
                             {focusMode === 'local' && <span className="focus-badge">📄 Local</span>}
                             {focusMode === 'web' && <span className="focus-badge">🌐 Web</span>}
                             {focusMode === 'all' && <span className="focus-badge">🔍 All</span>}
+                            {readingMeta.show && (
+                                <span className="focus-badge" style={{ marginLeft: 6, background: 'var(--bg-3)', color: 'var(--text-1)', border: '1px solid var(--border)' }}>
+                                    📖 ~{Math.max(1, readingMeta.minutes)} min · {readingMeta.words} words
+                                </span>
+                            )}
                         </span>
                         <div className="answer-actions">
                             {answer && (
@@ -170,6 +237,9 @@ export default function AnswerPanel() {
                                     <button className="action-btn" onClick={copyAnswer} title="Copy as text">
                                         📋 Copy
                                     </button>
+                                    <button className="action-btn" onClick={copyWithCitations} title="Copy with citations (Ctrl+Shift+C)">
+                                        🔗 Copy + Cite
+                                    </button>
                                     <div className="export-dropdown">
                                         <button
                                             className="action-btn"
@@ -181,9 +251,11 @@ export default function AnswerPanel() {
                                             <div className="export-menu">
                                                 <button onClick={exportThread}>📄 Download Markdown</button>
                                                 <button onClick={exportAsPDF}>🖨 Export as PDF</button>
+                                                <button onClick={copyAsMarkdown}>📝 Copy as Markdown</button>
                                                 <button onClick={copyAsHTML}>🌐 Copy as HTML</button>
                                                 <button onClick={copyAsJSON}>📋 Copy as JSON</button>
                                                 <button onClick={shareAnswer}>🔗 Share</button>
+                                                <button onClick={copyShareCode}>🧾 Copy share code</button>
                                             </div>
                                         )}
                                     </div>
@@ -191,6 +263,11 @@ export default function AnswerPanel() {
                             )}
                         </div>
                     </div>
+                    {copyStatus && (
+                        <div style={{ marginBottom: 8, color: 'var(--text-2)', fontSize: 12 }}>
+                            ✅ {copyStatus}
+                        </div>
+                    )}
                     <div className="answer-layout">
                         <div className="answer-body">
                             {answer ? (

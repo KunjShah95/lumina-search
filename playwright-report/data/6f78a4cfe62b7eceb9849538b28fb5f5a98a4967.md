@@ -1,0 +1,120 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e3]:
+  - navigation "Conversation history" [ref=e4]:
+    - generic [ref=e6]:
+      - generic [ref=e7]: ✦
+      - text: Lumina Search
+    - button "+ New Search" [ref=e8] [cursor=pointer]
+    - generic [ref=e9]:
+      - textbox "Search threads..." [ref=e10]
+      - button "⭐" [ref=e11] [cursor=pointer]
+    - generic [ref=e12]:
+      - combobox [ref=e13]:
+        - option "All conversations" [selected]
+      - button "📂" [ref=e14] [cursor=pointer]
+    - generic [ref=e16]:
+      - text: No history yet.
+      - text: Start searching!
+  - generic [ref=e17]:
+    - generic [ref=e18]:
+      - generic [ref=e19]:
+        - button "Toggle conversation sidebar" [ref=e20] [cursor=pointer]: ☰
+        - generic [ref=e21]: Lumina Search
+      - generic [ref=e23]:
+        - button "⭐" [ref=e24] [cursor=pointer]
+        - button "🔖" [ref=e25] [cursor=pointer]
+        - button "📚" [ref=e26] [cursor=pointer]
+        - button "⌨️" [ref=e27] [cursor=pointer]
+        - button "llama3.2 ▾" [ref=e29] [cursor=pointer]:
+          - generic [ref=e31]: llama3.2
+          - generic [ref=e32]: ▾
+        - button "⚙" [ref=e33] [cursor=pointer]
+    - generic "Quick settings" [ref=e34]:
+      - generic [ref=e35]:
+        - generic [ref=e36]: Model
+        - combobox "Model" [ref=e37]:
+          - option "GPT-4o Mini"
+          - option "GPT-4o"
+          - option "Claude 3.5 Sonnet"
+          - option "Gemini 1.5 Pro"
+          - option "Ollama Llama 3.2" [selected]
+          - option "LM Studio Local"
+      - generic [ref=e38]:
+        - generic [ref=e39]: Provider
+        - combobox "Provider" [ref=e40]:
+          - option "DuckDuckGo" [selected]
+          - option "Tavily"
+          - option "Brave"
+      - generic [ref=e41]:
+        - generic [ref=e42]: Mode
+        - combobox "Mode" [ref=e43]:
+          - option "🌐 Web" [selected]
+          - option "📄 Local"
+          - option "🔍 All"
+          - option "🧠 Hybrid RAG"
+      - generic [ref=e44]:
+        - generic [ref=e45]: Theme
+        - combobox "Theme" [ref=e46]:
+          - option "Dark" [selected]
+          - option "AMOLED"
+          - option "Light"
+          - option "System"
+    - generic [ref=e48]:
+      - generic [ref=e49]:
+        - generic [ref=e50]: ✦
+        - heading "Lumina Search" [level=1] [ref=e51]
+        - paragraph [ref=e52]:
+          - text: AI-powered search driven by parallel agents.
+          - text: Use local models or cloud — your choice.
+      - generic [ref=e53]:
+        - generic [ref=e54]:
+          - button "🌐 Web" [ref=e55] [cursor=pointer]:
+            - generic [ref=e56]: 🌐
+            - text: Web
+          - button "🖼️ Images" [ref=e57] [cursor=pointer]:
+            - generic [ref=e58]: 🖼️
+            - text: Images
+          - button "🎬 Videos" [ref=e59] [cursor=pointer]:
+            - generic [ref=e60]: 🎬
+            - text: Videos
+          - button "📚 Academic" [ref=e61] [cursor=pointer]:
+            - generic [ref=e62]: 📚
+            - text: Academic
+          - button "💻 Code" [ref=e63] [cursor=pointer]:
+            - generic [ref=e64]: 💻
+            - text: Code
+          - button "🗣️ Reddit" [ref=e65] [cursor=pointer]:
+            - generic [ref=e66]: 🗣️
+            - text: Reddit
+          - button "🧠 Hybrid RAG" [ref=e67] [cursor=pointer]:
+            - generic [ref=e68]: 🧠
+            - text: Hybrid RAG
+        - generic [ref=e70]:
+          - generic [ref=e71]:
+            - button "📄 Local" [disabled] [ref=e72]
+            - button "🌐 Web" [ref=e73] [cursor=pointer]
+            - button "🔍 All KBs" [disabled] [ref=e75]
+          - generic [ref=e76]:
+            - button "⚡" [ref=e77] [cursor=pointer]
+            - button "🎤" [ref=e78] [cursor=pointer]
+            - generic [ref=e79]: ⌕
+            - textbox "Ask anything..." [active] [ref=e80]
+            - button "↑" [disabled] [ref=e81]
+          - generic [ref=e82]:
+            - generic [ref=e83]: ⏎ to search · ⚡ for operators · ⌘K to focus
+            - generic [ref=e84]:
+              - button "site:github.com" [ref=e85] [cursor=pointer]
+              - button "filetype:pdf" [ref=e86] [cursor=pointer]
+              - button "!exclude" [ref=e87] [cursor=pointer]
+        - generic [ref=e88]:
+          - button "How does the James Webb Telescope take photos?" [ref=e89] [cursor=pointer]
+          - button "What is the difference between RAG and fine-tuning?" [ref=e90] [cursor=pointer]
+          - button "React performance optimization best practices?" [ref=e91] [cursor=pointer]
+          - button "Explain quantum entanglement simply" [ref=e92] [cursor=pointer]
+    - generic [ref=e93]:
+      - button "🗂 Batch" [ref=e94]
+      - button "🚀 AI Server" [ref=e95]
+      - button "📊 Trends" [ref=e96]
+```

@@ -1,8 +1,6 @@
 export interface SearchResult {
     link: string
     source: string
-    link: string
-    source: string
     url: string
     title: string
     snippet: string
@@ -204,6 +202,18 @@ export interface SearchOpts {
     budgetPolicy?: BudgetPolicy
     memoryPolicy?: MemoryPolicy
     incremental?: boolean  // Stream results as they arrive
+    operators?: SearchOperatorFilters  // Advanced search operators
+}
+
+export interface SearchOperatorFilters {
+    sites?: string[]
+    fileTypes?: string[]
+    dateRange?: { start: Date; end: Date }
+    languages?: string[]
+    intitleTerms?: string[]
+    sources?: string[]
+    excludeTerms?: string[]
+    exactPhrase?: string
 }
 
 export interface AppSettings {

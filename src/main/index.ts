@@ -26,6 +26,7 @@ import { getAutoUpdater, registerAutoUpdateHandlers } from './services/autoUpdat
 import { DEFAULT_EVAL_THRESHOLDS, enforceRegressionGate, EvalRunResult, generateWeeklyEvalDashboard, GoldenEvalCase, runOfflineEvaluation, writeEvalRunArtifacts } from './services/evalHarness'
 import { getOnlineEvalFeedback, getOnlineEvalFeedbackStats, recordOnlineEvalFeedback } from './services/evalFeedback'
 import { addMemoryFact, buildMemoryContext, clearThreadMemories, deleteMemoryFact, initMemoryProfileStore, listMemoryFacts, pruneExpiredMemories } from './services/memoryProfile'
+import { getBatchSearchManager } from './services/batchSearch'
 import { 
     initSearchOperators, 
     initSavedSearches, 
@@ -46,6 +47,15 @@ const isDev = !app.isPackaged
 let mainWindow: BrowserWindow | null = null
 let tray: Tray | null = null
 let isQuitting = false
+
+function isSafeExternalUrl(rawUrl: string): boolean {
+    try {
+        const parsed = new URL(rawUrl)
+        return parsed.protocol === 'https:' || parsed.protocol === 'http:'
+    } catch {
+        return false
+    }
+}
 
 interface WindowState {
     x?: number
@@ -101,6 +111,8 @@ function createWindow(): BrowserWindow {
             contextIsolation: true,
             nodeIntegration: false,
             sandbox: false,
+            webSecurity: true,
+            allowRunningInsecureContent: false,
         },
     })
 
@@ -128,8 +140,23 @@ function createWindow(): BrowserWindow {
     }
 
     win.webContents.setWindowOpenHandler(({ url }) => {
-        shell.openExternal(url)
+        if (isSafeExternalUrl(url)) {
+            shell.openExternal(url)
+        } else {
+            logger.warn('Blocked unsafe window.open URL', { url })
+        }
         return { action: 'deny' }
+    })
+
+    win.webContents.on('will-navigate', (e, url) => {
+        if (!isSafeExternalUrl(url)) {
+            e.preventDefault()
+            logger.warn('Blocked unsafe navigation URL', { url })
+            return
+        }
+
+        e.preventDefault()
+        shell.openExternal(url)
     })
 
     return win
@@ -374,6 +401,72 @@ ipcMain.handle('history:search', (_e, query: string) => {
         return searchThreads(validated)
     } catch (err) {
         logger.error('history:search validation failed', err)
+        throw err
+    }
+})
+
+// ── IPC: Batch Search ──────────────────────────────────────
+ipcMain.handle('batch-search:execute', async (_e, payload: {
+    queries: string[]
+    concurrency?: number
+    sequential?: boolean
+    searchOptions?: Partial<SearchOpts>
+}) => {
+    try {
+        if (!payload || typeof payload !== 'object') {
+            throw new Error('Invalid batch search payload')
+        }
+
+        const queries = validateStringArray(payload.queries, 'queries', { minLength: 1, maxLength: 100 })
+            .map((q) => validateString(q, 'query', { minLength: 1, maxLength: 2000 }))
+
+        const concurrency = typeof payload.concurrency === 'number'
+            ? validateNumber(payload.concurrency, 'concurrency', { min: 1, max: 10, isInteger: true })
+            : undefined
+
+        const manager = getBatchSearchManager()
+        manager.setOrchestrator(new SearchOrchestrator())
+
+        return await manager.executeBatch({
+            queries,
+            concurrency,
+            sequential: payload.sequential === true,
+            searchOptions: payload.searchOptions,
+        })
+    } catch (err) {
+        logger.error('batch-search:execute failed', err)
+        throw err
+    }
+})
+
+ipcMain.handle('batch-search:get', (_e, batchId: string) => {
+    try {
+        const validBatchId = validateString(batchId, 'batchId', { minLength: 1, maxLength: 256 })
+        const manager = getBatchSearchManager()
+        return manager.getBatchResult(validBatchId) ?? null
+    } catch (err) {
+        logger.error('batch-search:get failed', err)
+        throw err
+    }
+})
+
+ipcMain.handle('batch-search:list', () => {
+    try {
+        const manager = getBatchSearchManager()
+        return manager.getActiveBatches()
+    } catch (err) {
+        logger.error('batch-search:list failed', err)
+        throw err
+    }
+})
+
+ipcMain.handle('batch-search:cancel', (_e, batchId: string) => {
+    try {
+        const validBatchId = validateString(batchId, 'batchId', { minLength: 1, maxLength: 256 })
+        const manager = getBatchSearchManager()
+        return manager.cancelBatch(validBatchId)
+    } catch (err) {
+        logger.error('batch-search:cancel failed', err)
         throw err
     }
 })

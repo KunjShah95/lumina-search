@@ -10,7 +10,7 @@ export function useSearch() {
     const conversationHistory = useRef<Message[]>([])
 
     const {
-        setPhase, setSources, setImages, setVideos, appendToken, setFollowUps,
+        setPhase, setSources, appendSources, setImages, setVideos, appendToken, setFollowUps,
         setError, setStreaming, setThreadId, focusMode, reset,
     } = useSearchStore()
     const { model, settings } = useSettingsStore()
@@ -85,6 +85,8 @@ export function useSearch() {
                             // Convert RAG sources to SearchResult format for display
                             if (event.sources) {
                                 const mappedSources = event.sources.map((s: any) => ({
+                                    link: s.url || '',
+                                    source: 'rag',
                                     url: s.url || '',
                                     title: s.title,
                                     snippet: s.snippet,
@@ -166,6 +168,15 @@ export function useSearch() {
 
         let lastConfidence: any = null
 
+        // Get operator filters from searchStore and map to SearchOperatorFilters format
+        const { filters } = useSearchStore.getState()
+        const operators = filters.site || filters.filetype || filters.language || filters.dateRange ? {
+            sites: filters.site,
+            fileTypes: filters.filetype,
+            languages: filters.language,
+            dateRange: filters.dateRange,
+        } : undefined
+
         const requestId = window.api.search(
             query,
             {
@@ -181,6 +192,7 @@ export function useSearch() {
                     maxFactsPerQuery: settings.memoryMaxFactsPerQuery,
                 },
                 conversationHistory: conversationHistory.current.slice(-6),
+                operators,
             },
             (event: AgentEvent) => {
                 switch (event.type) {
@@ -188,7 +200,12 @@ export function useSearch() {
                         setPhase('searching', event.label)
                         break
                     case 'sources':
-                        setSources(event.data)
+                        // Handle incremental/partial results from providers
+                        if (event.partial) {
+                            appendSources(event.data)
+                        } else {
+                            setSources(event.data)
+                        }
                         if (focusMode !== 'image' && focusMode !== 'video') {
                             setPhase('synthesizing', '🧠 Synthesizing answer...')
                         }

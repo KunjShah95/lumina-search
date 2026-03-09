@@ -537,8 +537,8 @@ export function migrateFromJson(): void {
     // No-op, data is already loaded
 }
 
-// Helper function
-function chunkText(text: string): string[] {
+// Helper function - exported for testing
+export function chunkText(text: string): string[] {
     const chunks: string[] = []
     const sentences = text.split(/[.!?]+/).filter(s => s.trim())
 

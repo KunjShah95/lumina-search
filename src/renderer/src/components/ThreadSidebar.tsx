@@ -5,6 +5,7 @@ import { useSearch } from '../hooks/useSearch'
 import { Thread } from '../../../main/agents/types'
 import { useCollectionStore } from '../store/collectionStore'
 import CollectionsPanel from './CollectionsPanel'
+import { decodeShareInput, looksLikeShareInput } from '../utils/shareCode'
 
 interface Props {
     open: boolean
@@ -20,13 +21,33 @@ export default function ThreadSidebar({ open, onNewThread }: Props) {
         filterFavorites, setFilterFavorites, getFilteredThreads
     } = useHistoryStore()
     const { reset } = useSearchStore()
-    const { clearConversation } = useSearch()
+    const { clearConversation, runSearch } = useSearch()
     const { collections, activeCollectionId, setActiveCollectionId, loadCollections, filterThreads } = useCollectionStore()
     const [collectionsOpen, setCollectionsOpen] = useState(false)
+    const [pinnedSearches, setPinnedSearches] = useState<any[]>([])
+    const [loadingSearches, setLoadingSearches] = useState(false)
 
     useEffect(() => {
         loadCollections()
+        loadPinnedSearches()
     }, [loadCollections])
+
+    const loadPinnedSearches = async () => {
+        setLoadingSearches(true)
+        try {
+            const searches = await window.api.listSavedSearches({ })
+            const pinned = searches.filter((s: any) => s.starred && !s.isTemplate)
+            setPinnedSearches(pinned)
+        } catch (err) {
+            console.error('Failed to load pinned searches:', err)
+        } finally {
+            setLoadingSearches(false)
+        }
+    }
+
+    const executePinnedSearch = (query: string) => {
+        runSearch(query)
+    }
 
     const baseThreads = getFilteredThreads()
     const filteredThreads = filterThreads(baseThreads)
@@ -46,6 +67,26 @@ export default function ThreadSidebar({ open, onNewThread }: Props) {
         useHistoryStore.setState({ threads: [], activeThreadId: null })
     }
 
+    const importShareCode = async () => {
+        const raw = window.prompt('Paste a Lumina share code or link')
+        if (!raw) return
+
+        if (!looksLikeShareInput(raw)) {
+            alert('That does not look like a valid Lumina share code.')
+            return
+        }
+
+        try {
+            const imported = decodeShareInput(raw)
+            useHistoryStore.getState().upsertThread(imported)
+            useHistoryStore.getState().setActiveThreadId(imported.id)
+            await window.api.saveThread(imported)
+            alert('✅ Shared thread imported successfully.')
+        } catch (err) {
+            alert(err instanceof Error ? err.message : 'Failed to import share code.')
+        }
+    }
+
     const handleNewThread = () => {
         reset()
         clearConversation()
@@ -54,6 +95,63 @@ export default function ThreadSidebar({ open, onNewThread }: Props) {
     }
 
     const grouped = groupByDate(filteredThreads)
+    const favoriteThreads = filteredThreads.filter((t) => t.isFavorite)
+
+    const persistThreadMutation = async (threadId: string, mutate: (thread: Thread) => Thread) => {
+        const thread = threads.find((t) => t.id === threadId)
+        if (!thread) return
+        const updated = mutate(thread)
+        await window.api.saveThread(updated)
+    }
+
+    const handleTogglePin = async (e: React.MouseEvent, thread: Thread) => {
+        e.stopPropagation()
+        togglePin(thread.id)
+        await persistThreadMutation(thread.id, (t) => ({ ...t, isPinned: !t.isPinned }))
+    }
+
+    const handleToggleFavorite = async (e: React.MouseEvent, thread: Thread) => {
+        e.stopPropagation()
+        toggleFavorite(thread.id)
+        await persistThreadMutation(thread.id, (t) => ({ ...t, isFavorite: !t.isFavorite }))
+    }
+
+    const exportFavorites = (format: 'json' | 'csv') => {
+        const favorites = threads.filter((t) => t.isFavorite)
+        if (favorites.length === 0) return
+
+        let content = ''
+        let mime = 'application/json'
+        let ext = 'json'
+
+        if (format === 'json') {
+            content = JSON.stringify(
+                favorites.map((t) => ({ id: t.id, title: t.title, updatedAt: t.updatedAt, tags: t.tags ?? [] })),
+                null,
+                2,
+            )
+        } else {
+            mime = 'text/csv;charset=utf-8'
+            ext = 'csv'
+            const header = 'id,title,updatedAt,tags'
+            const rows = favorites.map((t) => {
+                const safeTitle = `"${t.title.replace(/"/g, '""')}"`
+                const safeTags = `"${(t.tags ?? []).join('|').replace(/"/g, '""')}"`
+                return `${t.id},${safeTitle},${new Date(t.updatedAt).toISOString()},${safeTags}`
+            })
+            content = [header, ...rows].join('\n')
+        }
+
+        const blob = new Blob([content], { type: mime })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `lumina-favorites.${ext}`
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        URL.revokeObjectURL(url)
+    }
 
     return (
         <div className={`sidebar ${open ? '' : 'closed'}`} role="navigation" aria-label="Conversation history">
@@ -113,6 +211,56 @@ export default function ThreadSidebar({ open, onNewThread }: Props) {
             </div>
 
             <div className="sidebar-threads">
+                {/* Pinned Saved Searches */}
+                {pinnedSearches.length > 0 && (
+                    <div style={{ marginBottom: '12px' }}>
+                        <div className="sidebar-section-label">📌 Pinned Searches</div>
+                        {pinnedSearches.map(search => (
+                            <div
+                                key={search.id}
+                                className="thread-item"
+                                onClick={() => executePinnedSearch(search.query)}
+                                style={{ cursor: 'pointer' }}
+                            >
+                                <span className="thread-item-icons">
+                                    <span style={{ fontSize: '12px' }}>⭐</span>
+                                </span>
+                                <span className="thread-item-title" style={{ fontSize: '12px' }}>
+                                    {search.name}
+                                </span>
+                                <div className="thread-item-actions">
+                                    <button
+                                        className="thread-delete-btn"
+                                        onClick={(e) => {
+                                            e.stopPropagation()
+                                            window.api.toggleSavedSearchStar(search.id).then(() => loadPinnedSearches())
+                                        }}
+                                        title="Unpin"
+                                    >✕</button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+
+                {favoriteThreads.length > 0 && !filterFavorites && !searchQuery.trim() && (
+                    <div>
+                        <div className="sidebar-section-label">Favorites</div>
+                        {favoriteThreads.slice(0, 5).map(thread => (
+                            <div
+                                key={`fav-${thread.id}`}
+                                className={`thread-item ${activeThreadId === thread.id ? 'active' : ''}`}
+                                onClick={() => loadThread(thread)}
+                            >
+                                <span className="thread-item-icons">
+                                    <span className="thread-icon-fav" title="Favorite">⭐</span>
+                                </span>
+                                <span className="thread-item-title">{thread.title}</span>
+                            </div>
+                        ))}
+                    </div>
+                )}
+
                 {Object.entries(grouped).map(([label, ts]) => (
                     <div key={label}>
                         <div className="sidebar-section-label">{label}</div>
@@ -131,14 +279,14 @@ export default function ThreadSidebar({ open, onNewThread }: Props) {
                                 <div className="thread-item-actions">
                                     <button
                                         className="thread-action-btn"
-                                        onClick={(e) => { e.stopPropagation(); togglePin(thread.id) }}
+                                        onClick={(e) => { void handleTogglePin(e, thread) }}
                                         title={thread.isPinned ? 'Unpin' : 'Pin'}
                                     >
                                         {thread.isPinned ? '📍' : '📌'}
                                     </button>
                                     <button
                                         className="thread-action-btn"
-                                        onClick={(e) => { e.stopPropagation(); toggleFavorite(thread.id) }}
+                                        onClick={(e) => { void handleToggleFavorite(e, thread) }}
                                         title={thread.isFavorite ? 'Unfavorite' : 'Favorite'}
                                     >
                                         {thread.isFavorite ? '★' : '☆'}
@@ -167,6 +315,19 @@ export default function ThreadSidebar({ open, onNewThread }: Props) {
 
             {threads.length > 0 && (
                 <div className="sidebar-footer">
+                    <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+                        <button className="clear-history-btn" onClick={() => { void importShareCode() }}>
+                            Import share code
+                        </button>
+                    </div>
+                    <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+                        <button className="clear-history-btn" onClick={() => exportFavorites('json')}>
+                            Export favorites JSON
+                        </button>
+                        <button className="clear-history-btn" onClick={() => exportFavorites('csv')}>
+                            Export CSV
+                        </button>
+                    </div>
                     <button className="clear-history-btn" onClick={clearAll}>
                         Clear all history
                     </button>

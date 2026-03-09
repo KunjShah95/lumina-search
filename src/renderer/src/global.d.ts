@@ -71,6 +71,24 @@ interface TraceStats {
     errorRate: number
 }
 
+    interface BatchSearchItem {
+        id: string
+        query: string
+        status: 'pending' | 'running' | 'completed' | 'failed'
+        error?: string
+        executionTimeMs?: number
+        result?: any
+    }
+
+    interface BatchSearchResult {
+        id: string
+        items: BatchSearchItem[]
+        totalQueries: number
+        completedCount: number
+        failedCount: number
+        totalExecutionTimeMs: number
+    }
+
 interface KBSnapshotExportResult {
     success: boolean
     filePath: string
@@ -217,6 +235,16 @@ declare global {
                 llmModel?: string
                 success?: boolean
             }) => Promise<any>
+                // Batch search
+                executeBatchSearch: (payload: {
+                    queries: string[]
+                    concurrency?: number
+                    sequential?: boolean
+                    searchOptions?: Partial<SearchOpts>
+                }) => Promise<BatchSearchResult>
+                getBatchSearchResult: (batchId: string) => Promise<BatchSearchResult | null>
+                listBatchSearches: () => Promise<BatchSearchResult[]>
+                cancelBatchSearch: (batchId: string) => Promise<boolean>
             searchAnalyticsGet: () => Promise<any>
             searchAnalyticsInsights: (options?: { timeRangeMs?: number }) => Promise<any>
             searchAnalyticsRate: (recordId: string, rating: number, notes?: string) => Promise<boolean>

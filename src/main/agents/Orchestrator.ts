@@ -40,7 +40,7 @@ export class SearchOrchestrator {
         if (focusMode === 'image') {
             yield { type: 'phase', label: '🖼️ Searching images...' }
             const provider = opts.providers[0] || 'duckduckgo'
-            const agent = new SearchAgent(provider)
+            const agent = new SearchAgent(provider, opts.operators)
             const images = await agent.searchImages(query)
             yield { type: 'images', data: images }
             yield { type: 'done' }
@@ -50,7 +50,7 @@ export class SearchOrchestrator {
         if (focusMode === 'video') {
             yield { type: 'phase', label: '🎬 Searching videos...' }
             const provider = opts.providers[0] || 'duckduckgo'
-            const agent = new SearchAgent(provider)
+            const agent = new SearchAgent(provider, opts.operators)
             const videos = await agent.searchVideos(query)
             yield { type: 'videos', data: videos }
             yield { type: 'done' }
@@ -82,7 +82,7 @@ export class SearchOrchestrator {
                 providers.map(p => ({
                     query: q,
                     provider: p,
-                    promise: new SearchAgent(p).run(q, focusMode)
+                    promise: new SearchAgent(p, opts.operators).run(q, focusMode)
                 }))
             )
 
@@ -107,7 +107,7 @@ export class SearchOrchestrator {
         // Standard mode: wait for all providers
         const searchSettled = await Promise.allSettled(
             queries.flatMap(q =>
-                providers.map(p => new SearchAgent(p).run(q, focusMode))
+                providers.map(p => new SearchAgent(p, opts.operators).run(q, focusMode))
             )
         )
 

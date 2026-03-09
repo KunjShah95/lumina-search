@@ -30,14 +30,28 @@ contextBridge.exposeInMainWorld('api', {
     ): string => {
         const requestId = `s_${Date.now()}_${Math.random().toString(36).slice(2)}`
 
+        const cleanup = () => {
+            ipcRenderer.removeListener(`search:error:${requestId}`, errorHandler)
+            ipcRenderer.removeListener(`search:event:${requestId}`, eventHandler)
+        }
+
         // Setup error handler for this search
         const errorHandler = (_e: any, error: any) => {
             console.error('Search error:', error)
             onEvent({ type: 'error', message: error?.message || 'Search failed' })
+            cleanup()
+        }
+
+        const eventHandler = (_e: any, event: AgentEvent) => {
+            onEvent(event)
+
+            if (event?.type === 'done' || event?.type === 'error') {
+                cleanup()
+            }
         }
 
         ipcRenderer.on(`search:error:${requestId}`, errorHandler)
-        ipcRenderer.on(`search:event:${requestId}`, (_e, event: AgentEvent) => onEvent(event))
+        ipcRenderer.on(`search:event:${requestId}`, eventHandler)
         safeSend('search:start', { query, opts, requestId })
 
         return requestId
@@ -149,9 +163,14 @@ contextBridge.exposeInMainWorld('api', {
     importKBSnapshot: (snapshotFilePath: string) => ipcRenderer.invoke('kb:snapshot:import', snapshotFilePath),
     ragQuery: (query: string, options: { useLocalContext: boolean; useWebSearch: boolean; kbId?: string; kbIds?: string[] }) => ipcRenderer.invoke('rag:query', query, options),
     ragQueryStream: (query: string, options: { useLocalContext: boolean; useWebSearch: boolean; kbId?: string; kbIds?: string[] }, callback: (event: any) => void) => {
-        const requestId = `rag_stream_${Date.now()}`;
         ipcRenderer.send('rag:query:stream', { query, options });
-        const handler = (_event: any, data: any) => callback(data);
+        const handler = (_event: any, data: any) => {
+            callback(data);
+
+            if (data?.type === 'done' || data?.type === 'error') {
+                ipcRenderer.removeListener('rag:stream:event', handler);
+            }
+        };
         ipcRenderer.on('rag:stream:event', handler);
         return {
             cancel: () => {
@@ -241,6 +260,17 @@ contextBridge.exposeInMainWorld('api', {
         ipcRenderer.invoke('collections:update', collection),
     deleteCollection: (id: string): Promise<boolean> =>
         ipcRenderer.invoke('collections:delete', id),
+
+    // ── Batch search ─────────────────────────────────────────
+    executeBatchSearch: (payload: {
+        queries: string[]
+        concurrency?: number
+        sequential?: boolean
+        searchOptions?: Partial<SearchOpts>
+    }) => ipcRenderer.invoke('batch-search:execute', payload),
+    getBatchSearchResult: (batchId: string) => ipcRenderer.invoke('batch-search:get', batchId),
+    listBatchSearches: () => ipcRenderer.invoke('batch-search:list'),
+    cancelBatchSearch: (batchId: string) => ipcRenderer.invoke('batch-search:cancel', batchId),
 })
 
 

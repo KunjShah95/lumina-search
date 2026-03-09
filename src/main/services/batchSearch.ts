@@ -36,6 +36,7 @@ export interface BatchSearchResult {
 }
 
 export class BatchSearchManager {
+  private readonly MAX_BATCH_HISTORY = 20
   private activeBatches: Map<string, BatchSearchResult> = new Map()
   private orchestrator: SearchOrchestrator | null = null
 
@@ -68,6 +69,7 @@ export class BatchSearchManager {
     }
 
     this.activeBatches.set(batchId, result)
+    this.pruneBatchHistory()
     logger.info(`Starting batch search: ${batchId} with ${items.length} queries`)
 
     const startTime = Date.now()
@@ -89,7 +91,7 @@ export class BatchSearchManager {
     options: BatchSearchOptions
   ): Promise<void> {
     for (const item of result.items) {
-      await this.executeSingleSearch(item, options)
+      await this.executeSingleSearch(result, item, options)
     }
   }
 
@@ -99,31 +101,24 @@ export class BatchSearchManager {
     concurrency: number
   ): Promise<void> {
     const queue = [...result.items]
-    const running: Promise<void>[] = []
+    const workerCount = Math.max(1, Math.min(concurrency, queue.length))
 
-    const runItem = async (item: BatchSearchItem): Promise<void> => {
-      await this.executeSingleSearch(item, options)
-    }
-
-    while (queue.length > 0 || running.length > 0) {
-      while (running.length < concurrency && queue.length > 0) {
-        const item = queue.shift()!
-        running.push(runItem(item))
-      }
-
-      if (running.length > 0) {
-        await Promise.race(running)
-        const completed = running.filter((p) => (p as any).status === 'completed')
-        for (const p of completed) {
-          running.splice(running.indexOf(p), 1)
+    const workers = Array.from({ length: workerCount }, async () => {
+      while (queue.length > 0) {
+        const item = queue.shift()
+        if (!item) {
+          break
         }
-      }
-    }
 
-    await Promise.all(running)
+        await this.executeSingleSearch(result, item, options)
+      }
+    })
+
+    await Promise.all(workers)
   }
 
   private async executeSingleSearch(
+    result: BatchSearchResult,
     item: BatchSearchItem,
     options: BatchSearchOptions
   ): Promise<void> {
@@ -167,7 +162,25 @@ export class BatchSearchManager {
       logger.error(`Batch item failed: ${item.id}`, error)
     }
 
+    if (item.status === 'completed') {
+      result.completedCount += 1
+    } else if (item.status === 'failed') {
+      result.failedCount += 1
+    }
+
     options.onProgress?.(item)
+  }
+
+  private pruneBatchHistory(): void {
+    if (this.activeBatches.size <= this.MAX_BATCH_HISTORY) {
+      return
+    }
+
+    const removableCount = this.activeBatches.size - this.MAX_BATCH_HISTORY
+    const keysToRemove = Array.from(this.activeBatches.keys()).slice(0, removableCount)
+    for (const key of keysToRemove) {
+      this.activeBatches.delete(key)
+    }
   }
 
   getBatchResult(batchId: string): BatchSearchResult | undefined {

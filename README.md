@@ -326,6 +326,8 @@ User Query → Agent Orchestrator → Parallel Execution
 
 ## 🏗️ Architecture
 
+For Mermaid-based architecture visuals (component, sequence, and data flow), see `docs/ARCHITECTURE.md`.
+
 ### System Architecture
 
 ```

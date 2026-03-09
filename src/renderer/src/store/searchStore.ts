@@ -22,9 +22,10 @@ interface VideoResult {
 
 export interface SearchFilters {
     sourceType?: 'all' | 'web' | 'docs' | 'images' | 'videos'
-    dateRange?: { start?: Date; end?: Date }
-    domain?: string
-    language?: string
+    dateRange?: { start: Date; end: Date }
+    site?: string[]
+    filetype?: string[]
+    language?: string[]
 }
 
 interface SearchState {
@@ -48,6 +49,7 @@ interface SearchState {
     setQuery: (q: string) => void
     setPhase: (p: SearchPhase, label?: string) => void
     setSources: (s: SearchResult[]) => void
+    appendSources: (s: SearchResult[]) => void
     setImages: (i: ImageResult[]) => void
     setVideos: (v: VideoResult[]) => void
     appendToken: (t: string) => void
@@ -87,6 +89,17 @@ export const useSearchStore = create<SearchState>((set, get) => ({
         set({ sources, filteredSources: sources })
         get().applyFilters()
     },
+    appendSources: (newSources: SearchResult[]) => {
+        const { sources } = get()
+        const mergedSources = [...sources]
+        for (const newSource of newSources) {
+            if (!mergedSources.some(s => s.url === newSource.url)) {
+                mergedSources.push(newSource)
+            }
+        }
+        set({ sources: mergedSources, filteredSources: mergedSources })
+        get().applyFilters()
+    },
     setImages: (images) => set({ images }),
     setVideos: (videos) => set({ videos }),
     appendToken: (text) => set((s) => ({ answer: s.answer + text })),
@@ -105,15 +118,31 @@ export const useSearchStore = create<SearchState>((set, get) => ({
         const { sources, filters } = get()
         let filtered = [...sources]
 
-        if (filters.domain) {
-            filtered = filtered.filter(s => s.domain?.toLowerCase().includes(filters.domain!.toLowerCase()))
+        if (filters.site?.length) {
+            filtered = filtered.filter(s => 
+                filters.site!.some(site => 
+                    s.domain?.toLowerCase().includes(site.toLowerCase()) ||
+                    s.url?.toLowerCase().includes(site.toLowerCase())
+                )
+            )
         }
 
-        if (filters.language) {
-            filtered = filtered.filter(s => 
-                s.snippet?.toLowerCase().includes(filters.language!) ||
-                s.title?.toLowerCase().includes(filters.language!)
-            )
+        if (filters.filetype?.length) {
+            filtered = filtered.filter(s => {
+                const urlLower = s.url?.toLowerCase() || ''
+                return filters.filetype!.some(ft => 
+                    urlLower.endsWith(`.${ft}`) || 
+                    urlLower.includes(`.${ft}?`) || 
+                    urlLower.includes(`.${ft}#`)
+                )
+            })
+        }
+
+        if (filters.language?.length) {
+            filtered = filtered.filter(s => {
+                const content = `${s.snippet || ''} ${s.title || ''}`.toLowerCase()
+                return filters.language!.some(lang => content.includes(lang.toLowerCase()))
+            })
         }
 
         set({ filteredSources: filtered })
